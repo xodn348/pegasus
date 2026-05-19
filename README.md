@@ -234,11 +234,11 @@ A single per-project routine. Clean dashboard. Spec changes propagate without ro
 
 ## Status
 
-🟡 **Design complete, implementation pending.**
+🟢 **Leader skill + Driver playbook drafted. Smoke test pending.**
 
 Next milestones:
 
-- [ ] `skills/pegasus/SKILL.md` — Leader prompt + subcommand routing
-- [ ] `claude/routines/leader-driver.md` — Driver playbook (tick logic, subagent dispatch, integration, push)
+- [x] `skills/pegasus/SKILL.md` — Leader prompt + subcommand routing
+- [x] `claude/routines/leader-driver.md` — Driver playbook (tick logic, subagent dispatch, integration, push)
 - [ ] First end-to-end smoke test with a trivial project (e.g., "build a markdown table-of-contents generator")
 - [ ] Mobile push integration (Gmail or Telegram) — deferred
