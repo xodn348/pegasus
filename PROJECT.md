@@ -1,367 +1,337 @@
-# Pegasus — PROJECT.md
+# Pegasus — PROJECT.md (v2)
 
-> **Authoritative spec for the Pegasus project.** The Leader agent inherits this file at every `/pegasus start` session. The Driver routine clones the repo and reads this file before every tick. Do not let this drift from reality.
+> **Authoritative spec.** Replaces v1 (2026-05-19) after Anthropic Managed Agents API verification. All v1 primitive names (Goal / Agent Team / Agent View) were aspirational — v2 uses the actual shipped feature names.
 
 ---
 
-## 1. Intent (the real outcome)
+## 1. Intent
 
 Build a **cloud-native autonomous project leader** for Claude such that:
 
-> The user can start a multi-week software project from their phone, hand it off to Anthropic's cloud, **turn their laptop off**, and the project completes itself — committed to GitHub, with the user being interrupted only when (a) a decision boundary is hit or (b) the project is done.
+> The user starts a multi-week software project from their phone, hands it off to Anthropic's cloud, **turns the laptop off**, and the project completes itself — committed to GitHub, with the user being interrupted only when (a) a decision is genuinely the user's to make or (b) the project is done.
 
-This is not a chat bot. This is not a code-gen wrapper. This is a **dev tool that owns a project end-to-end on the cloud**, using Anthropic's Managed Agent primitives (Goal, Agent Team, Agent View, Subagent, Memory, Webhooks) as the substrate.
+This is a *dev tool that owns a project end-to-end on Anthropic's cloud*. It uses Anthropic's Managed Agents primitives (Outcomes, Multiagent Orchestration, Memory, Subagent, Dreaming) as the substrate.
 
-**Success criteria** (testable):
+### Success criteria
 
-1. Smoke project (markdown TOC generator) completes from `/pegasus start` to `done` with the user's laptop powered off for ≥ 4 hours of the build window.
-2. Driver routine self-terminates when Goal is met (no manual cleanup).
-3. User receives a mobile push notification within 5 minutes of completion.
-4. Mid-project clarification (`questions/pending.md`) → user replies via `/pegasus tell` from mobile → next Driver tick incorporates the addendum and proceeds, with no laptop session re-opened.
+1. Smoke project (markdown TOC generator) completes from `/pegasus start` to terminal state with the user's laptop powered off for ≥ 4 hours of the build window.
+2. Driver routine self-terminates when all milestones reach satisfied state.
+3. User receives a notification within 5 minutes of completion.
+4. Mid-project clarification → user replies via `/pegasus tell` from mobile → next tick incorporates it.
 
-**Non-goals (explicit):**
+### Non-goals (explicit)
 
-- ❌ A custom UI. Use Anthropic's Agent View. No web dashboard, no Electron app.
-- ❌ A self-hosted runner (Fly, Render, Lambda). Anthropic Managed Agents only.
-- ❌ A PR-gated workflow. Driver auto-merges to `main` (precedent: `museum-as-code`).
-- ❌ Sub-hour tick cadence. Anthropic minimum is 1h; that's the contract.
-- ❌ Multi-project routines or shared repos. One project = one repo = one routine.
-- ❌ Reinventing interview, planning, or worker-loop skills. Reuse `deep-interview`, `prometheus`, `ralplan`, `ralph` / `worktree-parallel`.
-
----
-
-## 2. The user workflow (original 2026-05-17 design, normative)
-
-This is the workflow Junhyuk specified during the design session and never deviated from. The current Pegasus build is a literal implementation of these seven steps:
-
-1. **사용자가 클로드 세션을 통해 프로젝트를 시작** — mobile or desktop, doesn't matter.
-2. **리더 에이전트가 딥 인터뷰** — 20–30분, 거의 모든 측면. Reuses `deep-interview` / `prometheus` / `ralplan`.
-3. **리더 에이전트가 전체 아키텍처/워크플로/task 모두 spec 단위로 변환** — written into the project repo's `spec/` and `workflow/`.
-4. **리더 에이전트가 subagent를 병렬 호출, 각자에 맞는 spec 전달** — via **Agent Team** native primitive; Agent View exposes the tree.
-5. **각 서브에이전트는 받은 spec을 ralph 루프로 끝까지 완료** — test-pass-or-loop discipline, one worker per task lane.
-6. **리더가 서브에이전트와 소통, 종료까지 확인. 디버깅·추가 인터뷰 필요시에만 사용자 호출 (최대한 적게)** — `questions/pending.md` is the escalation channel; webhook pushes it to mobile only when truly stuck.
-7. **프로젝트 완료시 사용자에게 알림 보고** — Anthropic webhook on `goal_met` → Claude mobile push.
-
-Additional invariants from the same session:
-- **사용자 컴퓨터가 꺼져도 동작** — baseline, not a feature.
-- **루틴은 프로젝트당 1개**, named `[<project>] driver`.
-- **완료시 routine 자동 삭제** (via Goal completion).
-- **모바일 푸시 native** — no email/Telegram fallback in v1.
+- ❌ Custom UI. The Claude Console audit log + session event stream is the monitor.
+- ❌ Self-hosted runner. Anthropic Managed Agents only.
+- ❌ PR-gated workflow. Auto-merge to `main`.
+- ❌ Sub-hour tick cadence. Anthropic routine min is 1h.
+- ❌ Multi-project routines. One project = one repo = one routine.
+- ❌ Reinventing interview / planning / worker loops — reuse `pegasus-init`, `deep-interview`, `prometheus`, `ralplan`, plus the `worktree-parallel.md` SOP.
 
 ---
 
-## 3. Architecture — five layers
+## 2. User workflow (2026-05-17 original, normative)
+
+The 7 steps Junhyuk specified during the original design session. v2 implements these literally:
+
+1. **사용자가 클로드 세션을 통해 프로젝트를 시작**
+2. **리더 에이전트가 딥 인터뷰** — 20–30분
+3. **리더 에이전트가 전체 아키텍처/워크플로/task → spec으로 변환**
+4. **리더 에이전트가 subagent 병렬 호출, 각자 spec 전달**
+5. **각 subagent는 받은 spec을 ralph 루프로 끝까지 완료**
+6. **리더가 결과 통합 + 사용자 호출 (최대한 적게)**
+7. **완료 시 사용자에게 알림**
+
+Additional invariants:
+- 사용자 컴퓨터가 꺼져도 동작
+- 루틴은 프로젝트당 1개, `[<project>] driver`
+- 완료 시 routine 자동 비활성
+- 모바일 알림
+
+---
+
+## 3. Architecture — four layers
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  L0 — User Terminal:  Claude Mobile App                                  │
-│  • /pegasus start <name>          • Agent View로 진행 직접 모니터        │
-│  • /pegasus tell <name> "..."     • Webhook 푸시로 완료 알림 수신       │
+│  • /pegasus start <name>       • Claude Console에서 audit log 확인       │
+│  • /pegasus tell <name> "..."  • 세션 이벤트 stream으로 진행 모니터      │
 │  • /pegasus status / stop                                                │
 └────────────────────┬─────────────────────────────────────────────────────┘
-                     │ in-session
+                     │
                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  L1 — Leader (Claude Code session, ephemeral)                            │
-│  • 딥 인터뷰 (deep-interview --standard / ralplan)                       │
+│  • 딥 인터뷰 (deep-interview / pegasus-init / ralplan)                   │
 │  • spec/architecture/plan 작성                                            │
 │  • xodn348/<project> 부트스트랩                                          │
-│  • Goal-bound Routine 등록 → 핸드오프 → 세션 종료 OK                     │
+│  • Cron Routine 등록 → 핸드오프 → 세션 종료 OK                           │
 └────────────────────┬─────────────────────────────────────────────────────┘
                      │ creates ONE routine
                      │ name = "[<project>] driver"
-                     │ goal = "all plan.md tasks status=done"
+                     │ schedule = "0 * * * *"
                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L2 — Driver Routine (cloud Managed Agent)                               │
-│  • Goal-bound: tick마다 Anthropic이 success_check 자동 평가              │
-│  • 충족 → routine 자동 종료 + webhook 푸시 + 대시보드에서 제거           │
-│  • 미충족 → 다음 step 결정 → Agent Team launch                           │
-│  • Memory (beta) 에 cross-tick 상태 유지                                 │
+│  L2 — Driver (Managed Agent session, fires per tick)                     │
+│  • 매 tick마다 새 Managed Agent session 생성                              │
+│  • 현재 milestone에 대해 user.define_outcome 발사 (rubric 첨부)          │
+│  • Memory store에서 cross-tick 상태 로드                                  │
+│  • plan.md의 ready task 선택 → Multiagent Orchestration으로 위임         │
+│  • Outcome grader가 milestone "satisfied" 판정 → state.json에 done 표시  │
+│  • 모든 milestone done → 루틴 self-disable                                │
 └────────────────────┬─────────────────────────────────────────────────────┘
-                     │ launches Agent Team per tick
+                     │ delegates to specialists at runtime
                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L3 — Agent Team (parallel subagents, native primitive)                  │
-│  • Worker w1: spec/tasks/t1.md → ralph loop → subagent/w1 branch         │
-│  • Worker w2: spec/tasks/t2.md → ralph loop → subagent/w2 branch         │
-│  • Worker wN: ...                                                        │
-│  • Agent View가 모바일에 트리 형태 실시간 노출                           │
-│  • 워커 ≤ 3/tick (12분 wall-clock budget)                                │
+│  L3 — Workers (Multiagent Orchestration specialists)                     │
+│  • Lead agent (Driver)가 런타임에 specialist 호출, 선언적 roster 아님    │
+│  • 각 worker: 자체 모델/프롬프트/도구, 공유 파일시스템에서 병렬 작동      │
+│  • 각자 ralph 루프 (테스트 통과까지 자체 반복)                            │
+│  • 결과를 lead agent에 반환 → Driver가 main에 통합                       │
 └────────────────────┬─────────────────────────────────────────────────────┘
                      │ all read/write
                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  L4 — Shared State: GitHub xodn348/<project>                             │
 │  spec/  workflow/plan.md  events.ndjson  subagents/<id>/  output/        │
-│  questions/pending.md  done.md (legacy marker, Goal supersedes)          │
+│  questions/pending.md  state.json                                        │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why each layer is where it is
 
-| Layer | Could it move? | No, because… |
-|-------|----------------|--------------|
-| L0 Mobile | → desktop?   | Mobile is the *baseline* — desktop is incidental. Anything desktop-only kills the value prop. |
-| L1 Leader | → cloud?     | Interviews are interactive. Routine has no human in the loop. Leader must be in-session. |
-| L2 Driver | → local cron?| Local cron requires laptop on. Anthropic Routine = "computer off" satisfied. |
-| L3 Team   | → manual `Task` calls? | Native Agent Team gives Agent View, Goal-aware termination, parallel safety for free. |
-| L4 GitHub | → in-memory Anthropic Memory? | Memory is beta + private. GitHub is auditable, hand-editable, survives outages. Memory is *complementary*, not primary. |
+| Layer | Role | Non-negotiable because |
+|---|---|---|
+| L0 Mobile | Entry + monitor | Computer-off baseline. Desktop is incidental. |
+| L1 Leader | Interview + bootstrap | Interviews are interactive. Cron has no human. |
+| L2 Driver | Cron-fired Managed Agent | Anthropic Routine cron = "computer off" satisfied. |
+| L3 Workers | Multiagent Orchestration | Native parallelism, shared FS, persistent event log. |
+| L4 GitHub | Source of truth | Auditable, hand-editable, survives outages. |
 
 ---
 
-## 4. Anthropic Managed Agent primitives — what we use and how
+## 4. Anthropic Managed Agents primitives — actual shipped features
 
-Anthropic shipped these between 2026-05-07 and 2026-05-08. Pegasus is designed around them, not against them.
+Verified against [claude.com/blog/new-in-claude-managed-agents](https://claude.com/blog/new-in-claude-managed-agents), [Outcomes cookbook](https://platform.claude.com/cookbook/managed-agents-cma-verify-with-outcome-grader), and 9to5mac coverage. Beta header required: `managed-agents-2026-04-01`.
 
-| Primitive            | What it does                                              | Where it lands in Pegasus                                  |
-|----------------------|-----------------------------------------------------------|------------------------------------------------------------|
-| **Goal**             | Declarative `success_check`; routine auto-exits when met  | Replaces `done.md` polling. `goal = "all tasks done"`.    |
-| **Agent Team**       | Native multi-agent orchestration (subagent tree)          | L3 worker dispatch. Driver declares the team per tick.    |
-| **Agent View**       | Built-in tree UI for monitoring                           | Mobile monitoring. `/pegasus status` becomes the *backup*. |
-| **Subagent**         | Worktree-isolated child agent (Task tool, generalized)    | Each Team member runs `ralph` mode in its own worktree.   |
-| **Memory (beta)**    | Cross-session persistent memory per managed agent         | Driver's mental model across ticks (complements GitHub).   |
-| **Webhooks**         | Push events (`goal_met`, `escalation`, `tick_complete`)   | Mobile push without polling. Step 7 of user workflow.     |
-| **Dreaming**         | Self-improvement between sessions                         | **Skip in v1.** Re-evaluate after smoke test.             |
+| Primitive | What it does | Where we use it |
+|---|---|---|
+| **Outcomes** | Declarative milestone with `description` + `rubric` (text or file) + `max_iterations`. A separate grader LLM evaluates the agent's work against the rubric. Terminal states: `satisfied` / `failed` / `max_iterations_reached` / `interrupted`. Posted via `user.define_outcome` event. | Each Driver tick declares an Outcome for the **current milestone**. Grader's `satisfied` verdict → milestone done in state.json. |
+| **Multiagent Orchestration** | Lead agent delegates to specialists at runtime (own model/prompt/tools), parallel on shared filesystem, persistent event log. **Not a declarative team manifest** — the lead agent decides who/when at runtime. | Driver = lead agent. Workers = specialists. Driver picks worker per ready task. |
+| **Memory** | Per-agent persistent store, accessed across that agent's sessions. Public beta. | Driver Managed Agent's memory holds cross-tick context (spec hash, in-progress task ids, recent failures). |
+| **Subagent** | Additional Claude model called by main agent for sub-tasks. Worktree isolation is a separate Claude Code harness feature. | Used inside L3 specialists when they need deeper recursion. |
+| **Dreaming** | Background self-improvement reviewing past sessions + memory. Research preview, no public config. | **Skip v1.** Re-evaluate after smoke test. |
+| **Session event stream + Console audit log** | Every session emits structured events. Visible in Claude Console. | Mobile monitoring (`/pegasus status` is the fallback when offline). |
 
-### Goal declaration — concrete
+### Renames since v1
 
-```yaml
-# Registered with routine
-routine:
-  name: "[<project>] driver"
-  schedule: "0 * * * *"          # hourly (Anthropic minimum)
-  goal:
-    description: "Complete every task in workflow/plan.md for xodn348/<project>"
-    success_check: |
-      gh api repos/xodn348/<project>/contents/workflow/state.json \
-        | jq -r '.content' | base64 -d \
-        | jq -e '.tasks | all(.status == "done")' >/dev/null
-    timeout: "30d"               # escalate (not fail) after 30 days
-  webhook:
-    on_goal_met:           POST → user's Claude push subscription
-    on_user_input_needed:  POST → same
-    on_tick_error:         POST → same (after 3 consecutive failures)
-  prompt_source: "xodn348/pegasus/claude/routines/leader-driver.md"
-```
-
-**Result:** No `done.md` polling. No manual routine cleanup. Anthropic does it natively.
-
-### Agent Team declaration — concrete
-
-```yaml
-# Built by Driver each tick, after picking ready tasks
-team:
-  name: "<project>-workers-tick-${TICK}"
-  members:
-    - { id: w1, spec_path: "spec/tasks/t1.md", mode: ralph, branch: "subagent/w1" }
-    - { id: w2, spec_path: "spec/tasks/t2.md", mode: ralph, branch: "subagent/w2" }
-  view: true                     # surfaces in Agent View
-  budget_minutes: 12
-  on_complete: <integrate.sh>    # Driver fast-forwards subagent branches, verifies, pushes main
-```
-
-The `mode: ralph` flag instructs the worker to loop until its tests pass — the discipline lives in our `worktree-parallel.md` SOP, inlined into the worker prompt. No IP from external `ralph`.
+| v1 name (wrong) | v2 actual name | What changed |
+|---|---|---|
+| Goal | **Outcomes** | No `success_check` callable, no `timeout` field. Rubric + max_iterations only. |
+| Agent Team | **Multiagent Orchestration** | No team YAML manifest. Lead agent delegates at runtime. |
+| Agent View | (dropped) | No such product. Console audit log + event stream replace it. |
+| Webhook `goal_met` | Session event `session.outcome_evaluation_ended` | Real event name. Terminal `result` field carries satisfied/failed/etc. |
 
 ---
 
-## 5. Lifecycle — one project end to end
+## 5. Outcomes + max_iterations — the iteration model
+
+This is the v2's most important constraint. Read carefully.
+
+### What Outcomes actually is
+
+When a Managed Agent session has an Outcome attached, **a separate grader LLM** evaluates whether the agent's work satisfies the rubric. The agent gets up to `max_iterations` (default 3, max 20) rounds: work → grader checks → not satisfied → work more → grader checks again → ... until grader says satisfied OR cap hit.
+
+- `max_iterations` is bounded by Anthropic at **20 hard**.
+- One Outcome lives in **one session**. It does not persist across sessions.
+
+### Why this matters for multi-week projects
+
+A multi-week Pegasus project cannot be one giant Outcome — 20 grader evaluations is not enough to converge an entire project, and Outcomes don't span sessions anyway. So the model is:
+
+**One Outcome per Driver tick, scoped to one milestone-shaped chunk of work.**
+
+| Layer | Lifespan | Cap |
+|---|---|---|
+| Project | weeks–months | unlimited (we track in state.json) |
+| Milestone | hours–days | unlimited tick count, but one Outcome per tick |
+| Tick | < 15 min | one Outcome, `max_iterations=20` (Driver picks ~5) |
+
+### How a tick uses Outcomes
+
+1. Driver wakes (cron fires, fresh Managed Agent session).
+2. Driver reads `workflow/state.json`, picks ready tasks for the current milestone.
+3. Driver declares Outcome: `description: "Advance milestone <M> by completing tasks <t1, t2, t3>"`, `rubric: <link to spec/milestones/<M>.md acceptance criteria>`, `max_iterations: 5`.
+4. Driver delegates to workers via Multiagent Orchestration.
+5. Workers commit to their branches; Driver integrates.
+6. Driver requests grader evaluation.
+7. If `satisfied`: state.json updates (milestone advances), bus event `tick_satisfied`. Routine waits for next cron tick.
+8. If `max_iterations_reached`: bus event `tick_max_iterations`, milestone stays in progress, next tick retries.
+9. If `failed`: bus event `tick_failed`, milestone marked blocked, possible user escalation.
+
+### Project termination
+
+Project is `done` when all milestones in `workflow/plan.md` are status `done` in `state.json`. The cron routine self-disables at that point. **Project termination is OUR state machine, not Outcomes.** Outcomes only judge per-tick convergence.
+
+---
+
+## 6. Lifecycle — one project end to end
 
 | Step | Where | What happens | Output committed |
-|------|-------|--------------|------------------|
+|---|---|---|---|
 | 1 | L0 mobile | `/pegasus start gardener` | — |
-| 2 | L1 Leader | 25-min deep interview | `spec/current.md`, `spec/interview-transcript.md` |
-| 3 | L1 Leader | Architecture + plan synthesis | `workflow/plan.md`, `workflow/state.json`, `CLAUDE.md` |
-| 4 | L1 Leader | Repo create + initial commit | repo `xodn348/gardener` initialized |
-| 5 | L1 Leader | Routine register with Goal + Webhook + Team template | routine `[gardener] driver` enabled |
-| 6 | L1 → L0 | "Handed off. Phone off OK." | (verbal) |
-| 7 | L2 Driver (hourly) | Goal check → miss → pick ready tasks → launch Agent Team | `events.ndjson` += `tick_summary` |
-| 8 | L3 Team | Each worker loops ralph mode in its worktree | branches `subagent/w*` |
-| 9 | L2 Driver | Integrate worker branches → verify → push main | tasks status flips to `done` |
-| 10 | L0 mobile | Anytime, optionally: Agent View, `/pegasus status`, `/pegasus tell` | — |
-| 11 | L2 Driver | Goal met (all tasks done) | (Anthropic terminates routine) |
-| 12 | L0 mobile | **Push notification** — "gardener complete" | — |
-| 13 | repo | Lives forever as audit trail | — |
+| 2 | L1 Leader | 25-min deep interview (pegasus-init + ralplan) | `spec/current.md`, `spec/interview-transcript.md` |
+| 3 | L1 Leader | Milestone synthesis | `workflow/plan.md` (milestones list), `workflow/state.json`, `spec/milestones/M1.md` … |
+| 4 | L1 Leader | Repo create + initial commit | `xodn348/gardener` initialized |
+| 5 | L1 Leader | Cron routine register | `[gardener] driver` enabled, hourly |
+| 6 | L1 → L0 | "Handed off. Phone off OK." | — |
+| 7 | L2 Driver (hourly) | Outcome per current milestone, delegate, integrate, grader | `events.ndjson` += tick events |
+| 8 | L3 Workers | ralph loops on tasks within tick | subagent branches |
+| 9 | L2 Driver | Grader `satisfied` → milestone done | state.json updates |
+| 10 | L0 mobile | Optional: `/pegasus status` (or Console audit log) | — |
+| 11 | L2 Driver | All milestones done → disable routine | `state.json.phase = "done"` |
+| 12 | L0 mobile | Notification on completion | — |
+| 13 | repo | Permanent audit | — |
 
-Hard guarantee: between step 6 and step 12, the user's laptop is unnecessary. Mobile-only viewing/responding is the only contact.
-
----
-
-## 6. Decision boundaries (what the Driver may decide alone)
-
-These are read at every Driver tick. If a decision falls outside, Driver writes `questions/pending.md` and sets `phase = awaiting_user`.
-
-| Decision class                                  | Driver autonomous? |
-|-------------------------------------------------|--------------------|
-| Pick next ready task from `plan.md`             | ✅ yes             |
-| Spawn ≤ 3 workers per tick                      | ✅ yes             |
-| Integrate worker branch via fast-forward        | ✅ yes             |
-| Integrate via 3-way merge with conflicts        | ❌ escalate        |
-| Revert a worker merge after verify failure      | ✅ once; escalate on 2nd |
-| Add a new task not present in original plan     | ❌ escalate        |
-| Modify `spec/current.md` content (vs addendum)  | ❌ never           |
-| Touch any file outside `/tmp/proj` (cloud cwd)  | ❌ never           |
-| Push to `main`                                  | ✅ yes (auto-merge contract) |
-| Force-push or rewrite history                   | ❌ never           |
-| Delete subagent branches after merge            | ✅ yes (best-effort)|
-| Modify routine config or Goal definition        | ❌ never           |
-| Mark project `done` when Goal succeeds          | ✅ Anthropic-native |
-
-These boundaries are inherited by every worker through the inbox template.
+Hard guarantee: between step 6 and step 12, the laptop is unnecessary.
 
 ---
 
-## 7. State contract (`workflow/state.json`)
+## 7. Decision boundaries
+
+Driver may decide alone. Anything outside → `questions/pending.md` + `phase = "awaiting_user"`.
+
+| Decision | Driver autonomous? |
+|---|---|
+| Pick next ready task | ✅ |
+| Set tick `max_iterations` (≤ 20) | ✅ |
+| Declare Outcome rubric from spec | ✅ (rubric file is spec; Driver only references it) |
+| Spawn ≤ 3 workers via Multiagent Orchestration | ✅ |
+| Integrate worker branch (fast-forward) | ✅ |
+| Integrate via 3-way merge with conflicts | ❌ |
+| Revert merge after grader/verify fail | ✅ once; escalate on 2nd |
+| Add a new milestone | ❌ |
+| Modify `spec/current.md` (vs addendum) | ❌ |
+| Push to `main` | ✅ |
+| Force-push / rewrite history | ❌ |
+| Mark milestone done without grader `satisfied` | ❌ |
+| Disable routine when all milestones done | ✅ |
+
+---
+
+## 8. State + bus contracts
+
+### `workflow/state.json`
 
 ```json
 {
   "name": "<project>",
   "created_utc": "<iso8601>",
   "phase": "planning | executing | awaiting_user | done",
-  "tasks": [
+  "current_milestone_id": "M1",
+  "milestones": [
     {
-      "id": "t1",
+      "id": "M1",
       "title": "...",
       "status": "pending | in_progress | done | blocked",
-      "subagent_id": null,
-      "depends_on": [],
-      "spec_path": "spec/tasks/t1.md"
+      "rubric_path": "spec/milestones/M1.md",
+      "tasks": [
+        { "id": "t1", "title": "...", "status": "pending|in_progress|done|blocked", "depends_on": [] }
+      ]
     }
   ],
   "tick_count": 0,
   "last_tick_utc": null,
   "completion_pct": 0,
   "routine_id": "<anthropic-routine-id>",
-  "goal_id": "<anthropic-goal-id>"
+  "managed_agent_id": "<anthropic-agent-id>"
 }
 ```
 
-The Goal `success_check` reads this file. Memory beta caches it across ticks for read perf; GitHub is authoritative for writes.
-
----
-
-## 8. Bus contract (`events.ndjson`)
-
-Append-only NDJSON, mirrored from `pegasus-os/claude/bus/SCHEMA.md`. Every state change emits at least one event.
-
-Event kinds Pegasus emits:
+### `events.ndjson` event kinds
 
 ```
-project_init         — Leader bootstrap
-user_tell            — addendum from mobile
-question_raised      — Driver added to questions/pending.md
-question_resolved    — addendum matched an open question
-tick_summary         — one per Driver tick
-subagent_dispatched  — Agent Team member launched
-subagent_completed   — worker reported done + integrated
-subagent_failed      — worker failed or stalled
-integration_failed   — verify script failed; merge reverted
-escalation           — phase flipped to awaiting_user
-goal_met             — Anthropic webhook event recorded
-pegasus_done         — terminal marker (legacy mirror of Goal)
-pegasus_stopped      — user-initiated /pegasus stop
+project_init             — Leader bootstrap
+user_tell                — addendum from mobile
+question_raised          — Driver wrote questions/pending.md
+question_resolved        — addendum matched an open question
+tick_started             — Driver session opened, Outcome declared
+tick_satisfied           — Outcome grader returned satisfied
+tick_failed              — Outcome grader returned failed
+tick_max_iterations      — hit the cap mid-convergence; retry next tick
+tick_interrupted         — session terminated early
+specialist_invoked       — Multiagent Orchestration delegation
+specialist_returned      — specialist finished, branch ready
+integration_failed       — merge or verify failed; reverted
+milestone_advanced       — milestone status flipped to done
+escalation               — phase flipped to awaiting_user
+pegasus_done             — all milestones done; routine disabled
+pegasus_stopped          — user-initiated /pegasus stop
 ```
 
-Anthropic Webhook deliveries are also persisted into this bus, so we have a single timeline even if the Anthropic console is unavailable.
+Anthropic session events (`session.outcome_evaluation_ended` etc.) are mirrored into this bus by the Driver so the bus is the single timeline.
 
 ---
 
-## 9. Extraction from `pegasus-os` — what we reuse, what we skip
+## 9. Reuse from `xodn348/pegasus-os`
 
-The earlier `xodn348/pegasus-os` project shipped a working bus + reflectors + SOPs + skills. We reuse aggressively; we do not reinvent.
+Aggressive reuse. No reinvention.
 
-### REUSE_VERBATIM (copy or symlink as-is)
+- **VERBATIM**: `claude/bus/SCHEMA.md` (event schema generalizes), `claude/CLAUDE.md` base principles (Think / Simplicity / Surgical / Goal-Driven), `claude/reflectors/violation-rules.md` + `friction-rules.md`.
+- **ADAPT**: `claude/sops/parallel-subagents.md`, `claude/sops/spec-seed.md`, `claude/sops/worktree-parallel.md` (inline into worker prompt), `claude/skills/pegasus-init/SKILL.md` (already 80% of Leader interview logic).
+- **INSPIRE**: pegasus-os cloud-routine pattern (cron + ephemeral runner + commit-only writes).
+- **SKIP**: `daily-self-improve.md`, `oss-contributor-prompt.md`, `weekly-retro.md`, `kernel/hooks/*.sh` — pegasus-os specific.
 
-- **`claude/bus/SCHEMA.md`** — event schema generalizes perfectly. Extend `kind` enum with Pegasus-specific kinds in §8 above.
-- **`claude/CLAUDE.md` base principles** — Think Before Coding / Simplicity First / Surgical Changes / Goal-Driven Execution. Inherited by every Leader session and worker inbox.
-- **`claude/reflectors/violation-rules.md` + `friction-rules.md`** — same shape; extend with new rules: "Decision Boundary violated without escalation," "Project scope drifted ≥ 3 lanes mid-run," "User re-interviewed during execution."
-
-### REUSE_ADAPT (keep structure, retarget for project-leader context)
-
-- **`claude/sops/parallel-subagents.md`** — copy; add a project-leader section noting parallel decomposition applies *within a single tick's worker fanout*, not across ticks.
-- **`claude/sops/spec-seed.md`** — adopt the frozen-contract pattern. Rename `.spec/` → `spec/tasks/` to live inside each project repo. Keep Rules 1–4 (seed existence, schema, citations, freeze gate). Drop Rule 5's `/go` Stage 2 hook for v1.
-- **`claude/sops/worktree-parallel.md`** — same; this is the discipline a worker reads when it spawns under Agent Team `mode: ralph`. Inline into worker inbox template.
-- **`claude/skills/pegasus-init/SKILL.md`** — already the prototype for Pegasus Leader interview. Adopt the 3-stage structure (Intent / Boundary / Shape) and readiness gates. Re-target Stage 2 explicitly toward "Driver decision boundaries" (this PROJECT.md §6).
-
-### REUSE_INSPIRE (pattern only, no file copy)
-
-- **Cloud-primary Routine pattern** from `claude/ARCHITECTURE.md` — append-only bus + ephemeral runner + commit-only writes. Documented here in §3 and §8.
-- **Reflector → proposal → auto-merge-or-PR pipeline** from `daily-self-improve.md` — applied to Pegasus's own self-improvement *later*, not v1.
-- **iOS Shortcut entry pattern** from `claude/docs/ios-shortcut-setup.md` — used as inspiration for the v1.1 push-notification-back-to-mobile contract. v1 itself uses Claude mobile app's native `/pegasus` invocation.
-- **Readiness gates as Boolean fields in spec** — pegasus-init's pattern of forcing decision boundaries into explicit checkboxes is mirrored in §6.
-
-### SKIP (pegasus-os only, not applicable)
-
-- `claude/routines/daily-self-improve.md` — pegasus-os-specific spec patching. Pegasus does this differently (Goal completion + reflectors on project events).
-- `claude/routines/oss-contributor-prompt.md` — unrelated domain.
-- `claude/routines/weekly-retro.md` — needs Pegasus event volume to mature first. Phase 2.
-- `claude/kernel/hooks/*.sh` — Mac/launchd only. Cloud routine has no Stop hook.
-- iTerm / tmux lifecycle SOPs — local terminal concerns, not cloud.
+Two buses run in parallel by design — the Mac-side `pegasus-os/claude/bus/events.ndjson` (user's cross-session observability) and the per-project `xodn348/<project>/events.ndjson` (project-lifecycle observability). They share schema, they don't share data.
 
 ---
 
-## 10. v1 milestone list (post-PROJECT.md)
+## 10. v1 milestones (post-PROJECT.md surgery, post-verification)
 
-Track these in `workflow/plan.md` once the project is bootstrapped *through itself*.
+Tracked in `workflow/plan.md` once we bootstrap pegasus through itself.
 
-| #  | Task                                                                                     | Lane         |
-|----|------------------------------------------------------------------------------------------|--------------|
-| 1  | Rewrite `skills/pegasus/SKILL.md` to register Goal + Agent Team + Webhook (drop tick loop) | skill        |
-| 2  | Shrink `claude/routines/leader-driver.md` to "Goal not met → launch Team → exit" (~30 lines) | routine    |
-| 3  | Add `claude/teams/worker.yaml` — Agent Team member template with `mode: ralph`           | new file     |
-| 4  | Add `claude/webhooks/handler.md` — how Anthropic webhook events map to mobile push + bus events | new file |
-| 5  | Symlink/copy from pegasus-os: `bus/SCHEMA.md`, `reflectors/{violation,friction}-rules.md`, base principles | extraction |
-| 6  | Adapt SOPs: `sops/parallel-subagents.md`, `sops/spec-seed.md`, `sops/worktree-parallel.md` | extraction  |
-| 7  | Reflectors v0.1 — three Pegasus-specific violation rules from §9                         | reflectors   |
-| 8  | Smoke test — `markdown-toc` project: bootstrap → 4h laptop-off → completion push        | end-to-end   |
-| 9  | (Deferred) Webhook delivery format finalized once Anthropic docs settle                  | spec         |
-| 10 | (Deferred) Dreaming integration once smoke test holds for 3 consecutive projects         | future       |
+| # | Task | Lane |
+|---|---|---|
+| 1 | Rewrite `skills/pegasus/SKILL.md` to register cron routine + send `user.define_outcome` events per tick | skill |
+| 2 | Rewrite `claude/routines/leader-driver.md` to: load state → declare Outcome → delegate via Multiagent Orchestration → wait for grader → update state | routine |
+| 3 | `claude/lib/outcome-helpers.md` — how to format `user.define_outcome` events with rubric file references | new file |
+| 4 | `claude/lib/event-handlers.md` — map `session.outcome_evaluation_ended` and friends to our bus event kinds | new file |
+| 5 | Extract from pegasus-os: `bus/SCHEMA.md`, `reflectors/{violation,friction}-rules.md`, base principles | extraction |
+| 6 | Adapt SOPs: `parallel-subagents.md`, `spec-seed.md`, `worktree-parallel.md` | extraction |
+| 7 | Reflectors v0.1 — three Pegasus-specific violation rules (decision boundary breach, scope drift, mid-run reinterview) | reflectors |
+| 8 | Smoke test — `markdown-toc` project end-to-end | end-to-end |
 
----
-
-## 11. Diff vs. the 2026-05-19 stopgap impl
-
-Junhyuk's read on yesterday's two-file commit (`c5ac133`) was correct: the 8-phase tick loop in `leader-driver.md` and the `done.md` marker logic in `SKILL.md` are *largely redundant* once Goal, Agent Team, and Webhooks are properly wired. Specifically:
-
-| Topic                  | 2026-05-19 stopgap                  | This spec                                     | Action                                |
-|------------------------|-------------------------------------|-----------------------------------------------|---------------------------------------|
-| Termination            | `done.md` file + phase polling      | Anthropic Goal `success_check`                | Drop `done.md` writes from Driver. Leave file for hand-stop only. |
-| Worker dispatch        | `Task` tool + `inbox.md` markdown   | Agent Team declaration                        | Driver becomes a thin Team-launcher.  |
-| Monitoring             | `/pegasus status` ASCII             | Agent View (primary), status (backup)         | Keep status verb; demote to fallback. |
-| Completion notification | "deferred" in README               | Anthropic Webhook → Claude mobile push        | Wire webhook in routine registration. |
-| Routine cleanup         | Manual `enabled=false` on stop     | Goal-met auto-termination by Anthropic        | Drop the `schedule` disable call.     |
-| Tick logic              | 8 phases × ~30 LOC each (~240 LOC) | "Goal not met → launch Team → exit" (~30 LOC) | Rewrite leader-driver.md, much shorter. |
-
-**Decision**: Leave commit `c5ac133` in place as a checkpoint, but milestones 1–3 in §10 replace those files. The replacement should ship in a single commit so the diff is reviewable.
+Yesterday's `c5ac133` (skills/pegasus/SKILL.md + claude/routines/leader-driver.md) is **superseded** by milestones 1–2. Will revert or rewrite when those land.
 
 ---
 
-## 12. Anti-patterns (do not violate)
+## 11. Open questions (still unknown)
 
-- ❌ **Polling for completion.** Goal + Webhook make polling pointless.
-- ❌ **Custom UI work.** Agent View exists. Don't.
-- ❌ **Reinventing interview/planning skills.** `deep-interview` / `prometheus` / `ralplan` are battle-tested.
-- ❌ **Per-tick state file edits outside of `state.json` + `events.ndjson`.** Anything else is invisible to the Goal `success_check`.
-- ❌ **Touching the user's laptop during cloud phases.** No syncing local clones, no launchd hooks. Cloud is canonical.
-- ❌ **PRs for Driver self-changes.** Auto-merge to main per museum-as-code precedent. PRs are for human contributors only.
-- ❌ **Modifying `spec/current.md` from the Driver.** Driver may only write to `workflow/state.json`, `events.ndjson`, `subagents/*`, `questions/*`, `output/*`. Spec is human-authored or addendum-extended only.
+1. **Routine prompt body size limit** — no public limit documented. Test before relying on the ~6KB leader-driver.md inline.
+2. **Per-tick session lifecycle** — does a cron routine "tick" create a brand-new Managed Agent session each time, or attach to a persistent one? If the latter, memory and Outcomes carry over; if the former, memory store is the only continuity.
+3. **Mobile notification delivery** — what's the configurable target for `session.outcome_evaluation_ended` notifications? Claude mobile push? Email? Need cookbook follow-up.
+4. **Multiagent Orchestration declarative hooks** — confirmed no public team YAML, but is there a "specialist registry" we can pre-declare, or is delegation purely a runtime prompt-level call?
+5. **Memory beta scope** — confirmed per-agent. If we want project-wide memory across the Leader and the Driver Managed Agents (two different agents), we build that layer ourselves (likely via state.json).
 
----
-
-## 13. Open questions (must be resolved before v1 ships)
-
-These are deliberately listed here rather than silently assumed. Resolve via `/pegasus tell` or in this file directly.
-
-1. **Webhook delivery format** — Anthropic's webhook payload schema for `goal_met` and `user_input_needed`. Need to confirm Claude mobile push subscription is the right target, or whether we route through Gmail as a stopgap.
-2. **Routine prompt size limits** — `leader-driver.md` is loaded inline via `cat`. Confirm Anthropic Routine prompt body length is sufficient (current draft ~6KB).
-3. **Memory beta scope** — One Memory store per routine, or per project? Affects whether reusable patterns (e.g., "this user prefers SQLite over Postgres") leak across projects.
-4. **Agent View permissions on private repos** — Confirm Agent View renders fully when underlying repo is private. If not, repo must be public *or* Agent View needs a token.
-5. **30-day Goal timeout escalation** — On timeout, does Anthropic auto-fail or auto-archive? Affects whether we need our own timeout handler.
+Resolve these via cookbook follow-up, schedule-skill dry-run, or in-context experiment before milestones 1–3 ship.
 
 ---
 
-## 14. Footer
+## 12. Anti-patterns
+
+- ❌ Polling for completion — session event stream is the push channel.
+- ❌ Custom UI — Console audit log exists.
+- ❌ Reinventing interview/planning/worker skills.
+- ❌ Treating one Outcome as the project — it's per-tick.
+- ❌ Modifying `spec/current.md` from Driver (addendum-only).
+- ❌ Force-push or rewrite history.
+- ❌ Trusting `max_iterations_reached` as "this is done" — it isn't.
+
+---
+
+## 13. Footer
 
 Project owner: Junhyuk (xodn348@tamu.edu).
-Spec version: v1.0 — drafted 2026-05-19 from the original 2026-05-17 conversation, hardened with the post-2026-05-07 Anthropic Managed Agents primitives.
-This file supersedes earlier README architecture sketches; the README remains the public-facing intro.
+Spec version: **v2.0** — 2026-05-19, post-verification of Anthropic Managed Agents API shape. Supersedes v1 (which used aspirational primitive names).
+README remains the public-facing intro; this file is the engineering source of truth.
