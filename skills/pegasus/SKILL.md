@@ -16,9 +16,12 @@ PROJECT.md §2 7-step workflow normative. Leader (L1) interviews, bootstraps, ha
 
 ### `/pegasus start <name>`
 
-1. **Deep interview (20–30 min).** Run `pegasus-init` skill (from pegasus-os reuse). Output: `spec/interview-transcript.md`.
-2. **Synthesize spec.** Run `ralplan` against the transcript. Output: `spec/current.md`, `workflow/plan.md` (milestones), `workflow/state.json` (phase=planning).
-3. **Acceptance rubrics.** For each milestone, write `spec/milestones/M<n>.md` with grader-readable acceptance criteria. Grader subagent reads these per tick.
+1. **Deep interview (20–30 min).** Invoke `~/code/pegasus-os/claude/skills/pegasus-init/SKILL.md` **verbatim** (15Q, 3-stage, ambiguity ≤ 0.15 gate, pressure pass, readiness gates — all unchanged). Two output redirects:
+   - `projects/<slug>/PROJECT.md` → `xodn348/<name>/spec/current.md`
+   - `projects/<slug>/INTERVIEW.md` → `xodn348/<name>/spec/interview-transcript.md`
+   Skip pegasus-init's "pegasus run" handoff line — ours is `CronCreate`.
+2. **Synthesize milestones.** Apply `feedback_spec_seed.md` (user memory) **Rules 2–4 verbatim** — every `Acceptance` checklist line from `spec/current.md` becomes one milestone in `workflow/plan.md`; Rule 4's "Alternative interpretations considered" block lives inside `spec/current.md` before freeze. Initialize `workflow/state.json` (phase=planning).
+3. **Acceptance rubrics.** Per milestone: write `spec/milestones/M<n>.md` = its Acceptance line + one observable verification (test cmd / file existence / metric threshold). Grader reads this per tick.
 4. **Repo bootstrap.** Create `xodn348/<name>` (private). Push initial spec + plan + state + empty `workflow/events.ndjson`.
 5. **Routine register.** Use `CronCreate` tool — `schedule="0 * * * *"`, `name="[<name>] driver"`, `prompt` = substituted `claude/routines/leader-driver.md` (substitute `{{PROJECT_NAME}}` + `{{REPO_URL}}`). Capture returned cron id → `state.json.routine_id`. Push.
 6. **Handoff message** to user: "Driver routine `[<name>] driver` armed at hourly. Phone off OK." Set `state.json.phase = "executing"`.
