@@ -1,65 +1,49 @@
 {
-  "$schema": "https://pegasus.dev/schemas/workers.v1.json",
-  "version": 1,
-  "coordinator": {
-    "name": "Pegasus Coordinator",
-    "model": "claude-sonnet-4-6",
-    "system_prompt_path": "claude/coordinator.md",
-    "delegates_to": ["CEO", "CTO", "CFO", "CMO", "COO", "General Counsel"]
-  },
+  "$schema": "https://pegasus.dev/schemas/workers.v2.json",
+  "version": 2,
+  "runtime": "claude-code-agent-tool",
   "workers": [
     {
       "name": "CEO",
       "model": "claude-opus-4-7",
       "system_prompt_path": "workers/ceo.md",
-      "tools": ["read", "write", "web_fetch"],
-      "mcp": [],
-      "skills": []
+      "tools": ["Read", "Write", "WebFetch"]
     },
     {
       "name": "CTO",
       "model": "claude-haiku-4-5-20251001",
       "system_prompt_path": "workers/cto.md",
-      "tools": ["read", "write", "edit", "bash", "grep", "glob", "web_fetch"],
-      "mcp": ["github"],
-      "skills": []
+      "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "WebFetch"]
     },
     {
       "name": "CFO",
       "model": "claude-haiku-4-5-20251001",
       "system_prompt_path": "workers/cfo.md",
-      "tools": ["read", "write", "web_fetch"],
-      "mcp": [],
-      "skills": ["xlsx"]
+      "tools": ["Read", "Write", "WebFetch"]
     },
     {
       "name": "CMO",
       "model": "claude-haiku-4-5-20251001",
       "system_prompt_path": "workers/cmo.md",
-      "tools": ["read", "write", "web_fetch", "web_search"],
-      "mcp": [],
-      "skills": ["pptx", "pdf"]
+      "tools": ["Read", "Write", "WebFetch", "WebSearch"]
     },
     {
       "name": "COO",
       "model": "claude-haiku-4-5-20251001",
       "system_prompt_path": "workers/coo.md",
-      "tools": ["read", "write", "web_search", "web_fetch"],
-      "mcp": [],
-      "skills": ["docx"]
+      "tools": ["Read", "Write", "WebSearch", "WebFetch"]
     },
     {
       "name": "General Counsel",
       "model": "claude-opus-4-7",
       "system_prompt_path": "workers/general-counsel.md",
-      "tools": ["read", "write", "web_search", "web_fetch"],
-      "mcp": [],
-      "skills": ["pdf"]
+      "tools": ["Read", "Write", "WebSearch", "WebFetch"]
     }
   ],
   "notes": {
-    "v1_mcp": "Only github MCP wired in v1. v1.5 adds Stripe (CFO), Linear/Notion (COO/CMO), legal-db (GC).",
-    "model_tiering": "Opus for CEO + GC (judgment-heavy). Haiku for execution roles. Coordinator on Sonnet.",
-    "v1_skills": "Anthropic prebuilt skills attached per role: CFO=xlsx, CMO=pptx+pdf, COO=docx, GC=pdf."
+    "runtime": "Workers are invoked via Claude Code's Agent tool — subagent_type='general-purpose', prompt = body of system_prompt_path file + task. No Anthropic Managed Agents API.",
+    "model_tiering": "Opus for CEO + GC (judgment-heavy). Haiku for execution roles (CTO/CFO/CMO/COO).",
+    "mcp": "Configured in the user's Claude Code MCP settings separately, not declared here.",
+    "coordinator": "No separate coordinator agent. The Driver itself routes tasks per leader-driver.md §3 table."
   }
 }

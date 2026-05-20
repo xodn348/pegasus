@@ -1,19 +1,19 @@
-# Pegasus — PROJECT.md (v3)
+# Pegasus — PROJECT.md (v4)
 
 ## 1. Purpose
 
-**클라우드 네이티브 자율 프로젝트 리더.** 사용자가 폰에서 멀티위크 프로젝트를 시작 → Anthropic 클라우드로 핸드오프 → **노트북 끔** → 프로젝트가 스스로 완료. 사용자는 (a) 정말 본인이 결정해야 할 때 또는 (b) 완료 시에만 호출됨.
+**클라우드 네이티브 자율 프로젝트 리더 (Claude Code 세션 기반).** 사용자가 폰에서 멀티위크 프로젝트를 시작 → Claude Code 루틴이 핸드오프 → **노트북 끔** → 프로젝트가 스스로 완료. 사용자는 (a) 정말 본인이 결정해야 할 때 또는 (b) 완료 시에만 호출됨.
 
-기반: Anthropic Managed Agents (Outcomes, Multiagent Orchestration, Memory, Scheduled Routines).
+기반: **Claude Code (세션 인증)** — `CronCreate`, `Agent` (subagent fanout), `PushNotification`, GitHub. **Anthropic API key / Managed Agents API 안 씀.**
 
 ### 성공 기준
 - `/pegasus start` → 터미널 상태까지, 빌드 윈도우 중 ≥4h 노트북 off
-- 모든 milestone satisfied → 루틴 self-disable
-- 완료 5분 이내 모바일 알림
+- 모든 milestone satisfied → 루틴 self-disable (`CronDelete`)
+- 완료 5분 이내 모바일 푸시 (`PushNotification`)
 - 중간 질문 → `/pegasus tell` → 다음 tick이 반영
 
 ### Non-goals
-- 커스텀 UI (Claude Console로 충분) · 셀프호스트 러너 · PR 게이트 (auto-merge) · sub-hour cadence · 멀티 프로젝트 루틴 · 인터뷰/플래닝 스킬 재발명
+- Anthropic API · Managed Agents 베타 · 커스텀 UI · 셀프호스트 러너 · PR 게이트 (auto-merge) · sub-hour cadence · 멀티 프로젝트 루틴 · 인터뷰/플래닝 스킬 재발명
 
 ---
 
@@ -34,54 +34,54 @@
 ## 3. Architecture
 
 ```
-L0  Mobile      /pegasus start | tell | status | stop
+L0  Mobile      Claude Code mobile — /pegasus start | tell | status | stop
      ↓
-L1  Leader      딥 인터뷰 → spec/plan → repo 부트스트랩 → memory_store 생성 → cron 등록 → 핸드오프
-     ↓  creates  [<project>] driver  (hourly)
-L2  Driver      매 tick: state 로드 → Outcome 선언 → multiagent 위임 → 통합 → state 갱신
-     ↓  delegates
-L3  Workers     C-suite specialists (CEO · CTO · CFO · CMO · COO · GC), ralph 루프
+L1  Leader      Claude Code 세션 — 딥 인터뷰 → spec/plan → repo 부트스트랩 → CronCreate → 핸드오프
+     ↓  creates  cron "[<project>] driver"  (hourly)
+L2  Driver      Claude Code 루틴 세션 (매 tick 새 세션) — state 로드 → Agent fanout → grader subagent → state 갱신
+     ↓  Agent tool delegates
+L3  Workers     workers/*.md (CEO · CTO · CFO · CMO · COO · GC) — subagent system prompts
      ↓  read/write
 L4  GitHub      xodn348/<project> — spec, plan, events.ndjson, state.json
 ```
 
-**Cross-cutting (v1 필수):**
-- **Memory store** workspace-scoped (cross-agent). Leader 생성 → Driver 매 tick `/mnt/memory/` 마운트. `state.json`이 진실
-- **Prompt caching** `cache_control` 1h TTL → 시스템 프롬프트 캐시 hit 90% 할인. Hourly cron과 정확히 정합
-- **Model tiering** Haiku = 워커 / Sonnet = Driver coordinator / Opus = 어려운 결정만 → 4–6× 비용 절감
-- **Worker별 MCP** CFO+Stripe, COO+Linear, CMO+Notion, CTO+GitHub, GC+web_search (v1엔 1–2개만, 나머지 v1.5)
-- **Anthropic prebuilt skills** xlsx / pdf / pptx / docx 기본 활용
+**Cross-cutting:**
+- **State = GitHub.** `state.json`만이 cross-tick 진실. 별도 memory store API 없음.
+- **Worker = system prompt.** `workers/*.md` 본문을 `Agent` tool의 `prompt`에 주입.
+- **Grader = subagent.** tick 끝에 별도 grader `Agent` 호출 (rubric + 작업 결과 보여줌, satisfied/needs_more_work/failed 판정).
+- **Mobile push = `PushNotification` tool.** Claude Code 네이티브, relay 안 필요.
+- **비용 = Claude Code 구독.** per-token API billing 없음.
 
 ---
 
-## 4. Anthropic primitives
+## 4. Claude Code primitives we use
 
-Beta header `managed-agents-2026-04-01`. Verified vs official cookbooks.
-
-| Primitive | Pegasus 사용 |
+| Tool / mechanism | Pegasus 사용 |
 |---|---|
-| **Outcomes** | tick당 1개. rubric = spec 파일. `max_iterations = 5` (하드 캡 20). 터미널: satisfied / failed / max_iterations_reached / interrupted |
-| **Multiagent Orchestration** | `multiagent={"type":"coordinator","agents":[...]}` 선언 + 런타임 `agent_toolset_20260401` 호출. depth 1, ≤20 unique, ≤25 concurrent |
-| **Memory store** | workspace-scoped, `/mnt/memory/`. CAS via `content_sha256`. 30일 버전 보관. ≤8 stores/session, 100KB/memory cap |
-| **Scheduled Routines** | header `experimental-cc-routine-2026-04-01`. tick마다 **새 세션** — memory_store + GitHub만 연속 |
-| **Webhooks** | `session.outcome_evaluation_ended` 등. 모바일 푸시는 native 없음 → 직접 relay 필요 |
-| **Dreaming** | v1 skip. 스모크 후 재평가 |
+| **`CronCreate`** | Driver 루틴 등록 — hourly cron, prompt body = `claude/routines/leader-driver.md` |
+| **`CronDelete`** | 프로젝트 done 또는 사용자 `/pegasus stop` |
+| **`Agent`** | Driver가 매 tick 워커 + grader subagent 병렬 호출. `model`, `subagent_type` 지정 가능. 1 메시지 내 여러 호출 → 병렬 |
+| **`PushNotification`** | 사용자 escalation, 완료 알림 |
+| **`TaskCreate / Update`** | tick 내 task 추적 |
+| **`Bash / Read / Write / Edit`** | repo clone, 파일 작업, commit, push |
+| **`WebFetch / WebSearch`** | 워커가 외부 자료 가져올 때 |
+
+Managed Agents 베타, Outcomes API, multiagent coordinator API, `user.define_outcome` 이벤트 — **안 씀**.
 
 ---
 
-## 5. Outcomes — tick 단위 수렴
+## 5. Tick semantics
 
-- 1 Outcome = 1 세션 = 1 tick (세션 간 이월 없음)
-- `max_iterations` = grader 평가 횟수 (cap 20, Driver 기본 5)
-- "프로젝트 완료"는 **Outcomes가 아니라 우리 `state.json` 상태머신**이 결정. 모든 milestone done → 루틴 self-disable
+- 1 tick = 1 Claude Code 세션 (cron fires fresh, GitHub만 연속성)
+- 프로젝트 완료 = `state.json`의 모든 milestone done. Driver가 `CronDelete` 호출, `phase = done`
 
-tick 동작:
-1. Driver wake (새 세션) → state 로드 → 현재 milestone ready task 선택
-2. `user.define_outcome` 발사 — description + rubric path + max_iterations=5
-3. multiagent 위임 → 워커 작업 → grader 평가
-4. `satisfied` → state 갱신 → 다음 cron tick 대기
-5. `max_iterations_reached` → milestone 진행중 유지, 다음 tick 재시도
-6. `failed` → 차단 표시 → 사용자 escalation
+### Grader (자체 구현)
+
+Anthropic Outcomes API 없으니 Driver가 매 tick 끝에:
+1. 워커 결과물 모음 (diff, 파일 변경, 테스트 결과)
+2. `spec/milestones/{M}.md` rubric 첨부
+3. `Agent` 호출 — `model=claude-sonnet-4-6`, prompt = "이 작업 결과가 rubric 충족하는가? `satisfied` / `needs_more_work` / `failed` + 2문장 사유"
+4. 반환 verdict를 `events.ndjson`에 기록 + state.json 갱신
 
 ---
 
@@ -89,23 +89,25 @@ tick 동작:
 
 | Driver 자율 | 사용자 확인 |
 |---|---|
-| next task pick · rubric 인용 · ≤3 워커 · fast-forward 머지 · 1회 revert · push to main · 루틴 disable | 3-way 충돌 머지 · milestone 추가 · spec/current.md 수정 · force push · grader 없이 done 표시 · 2회째 revert |
+| next task pick · rubric 인용 · ≤3 워커 · fast-forward 머지 · 1회 revert · push to main · `CronDelete` self-disable | 3-way 충돌 머지 · milestone 추가 · `spec/current.md` 수정 · force push · grader 없이 done 표시 · 2회째 revert |
 
-경계 밖 → `questions/pending.md` + `phase = "awaiting_user"` + 모바일 푸시.
+경계 밖 → `questions/pending.md` + `phase = "awaiting_user"` + `PushNotification`.
 
 ---
 
 ## 7. State + bus
 
-**`workflow/state.json`** — name, phase (planning / executing / awaiting_user / done), current_milestone_id, milestones[…], tick_count, completion_pct, routine_id, managed_agent_id.
+**`workflow/state.json`** — name, phase (planning / executing / awaiting_user / done / stopped), current_milestone_id, milestones[…], tick_count, last_tick_utc, completion_pct, routine_id.
 
-**`events.ndjson`** kinds — project_init, user_tell, question_raised / resolved, tick_started / satisfied / failed / max_iterations / interrupted, specialist_invoked / returned, integration_failed, milestone_advanced, escalation, pegasus_done, pegasus_stopped. Anthropic 세션 이벤트도 미러링.
+**`events.ndjson`** kinds — project_init, user_tell, question_raised / resolved, tick_started / satisfied / needs_more_work / failed / skipped, specialist_invoked / returned, integration_failed, milestone_advanced, escalation, pegasus_done, pegasus_stopped.
 
 **두 bus 병행:** Mac `pegasus-os/claude/bus/events.ndjson` (사용자 cross-session 관찰) + 프로젝트 `xodn348/<project>/events.ndjson` (프로젝트 lifecycle). 스키마 공유, 데이터 분리.
 
 ---
 
 ## 8. Reuse from pegasus-os
+
+pegasus-os도 Claude Code 루틴으로 동작 — 동일 런타임이라 재사용 직접적.
 
 - **VERBATIM**: `bus/SCHEMA.md`, base principles (Think / Simplicity / Surgical / Goal-Driven), `reflectors/{violation,friction}-rules.md`
 - **ADAPT**: SOPs (parallel-subagents, spec-seed, worktree-parallel), `skills/pegasus-init` (Leader 인터뷰 80%)
@@ -117,12 +119,11 @@ tick 동작:
 
 | # | Task |
 |---|---|
-| 1 | `skills/pegasus/SKILL.md` — 4-verb (start/tell/status/stop) + 인터뷰 체인 + memory_store 생성 + cron 등록 |
-| 2 | `claude/routines/leader-driver.md` — tick 프롬프트: state 로드 → Outcome 선언 → multiagent 위임 → 통합 → state 갱신 |
-| 3 | `workers.json` — C-suite 워커 매핑 (CEO / CTO / CFO / CMO / COO / GC) |
-| 4 | v1 필수 5개 박기 — memory_store · prompt caching · model tiering · worker별 MCP · prebuilt skills |
-| 5 | pegasus-os reuse — bus/SCHEMA.md, base principles, reflectors 추출 |
-| 6 | Smoke — Ebsilon GTM 1-pager (또는 markdown-toc), ≥4h laptop-off 검증 |
+| 1 | `skills/pegasus/SKILL.md` — 4-verb + 인터뷰 + repo 부트스트랩 + `CronCreate` |
+| 2 | `claude/routines/leader-driver.md` — tick 프롬프트: state 로드 → Agent fanout → grader → state 갱신 |
+| 3 | `workers.json` — C-suite 워커 매핑 (system_prompt_path + model + tools) |
+| 4 | pegasus-os reuse — bus/SCHEMA.md, base principles, reflectors 추출 |
+| 5 | Smoke — Ebsilon GTM 1-pager (또는 markdown-toc), ≥4h laptop-off 검증 |
 
 ---
 
@@ -130,28 +131,26 @@ tick 동작:
 
 | Q | A |
 |---|---|
-| Routine prompt size limit | 미공개. 6KB 이하 권장. **테스트 필요** |
-| Tick 세션 lifecycle | **새 세션**. memory_store + GitHub만 연속성 보장 |
-| 모바일 푸시 | Anthropic native **없음**. webhook `session.outcome_evaluation_ended` → 직접 relay (Pushover / APNs) |
-| Multiagent 선언적 roster | **있음** — `multiagent={"type":"coordinator","agents":[...]}`. 런타임 위임은 `agent_toolset_20260401` |
-| Memory 스코프 | **workspace-scoped** (per-agent 아님). Leader + Driver가 같은 workspace 공유 → 진실 공유 가능 |
-
-남은 미확정: 루틴 프롬프트 body 한계 (실험으로 확인).
+| Cron routine prompt 크기 한계 | Claude Code 측 제한. 6KB 이하 권장. 테스트 필요 |
+| Tick 세션 lifecycle | **새 세션 매번**. GitHub만 연속성 |
+| 모바일 푸시 | **`PushNotification` tool 네이티브** — relay 안 필요 |
+| 워커 병렬 호출 | `Agent` tool 1 메시지 내 여러 호출 → 병렬 실행 |
+| 비용 | **Claude Code 구독 흡수**, API per-token 빌링 없음 |
 
 ---
 
 ## 11. Anti-patterns
 
-- Polling — 세션 이벤트 스트림이 푸시 채널
-- 하나의 Outcome으로 전체 프로젝트 평가 (per-tick임)
+- Anthropic API / Managed Agents 베타 호출
+- 한 tick 안에 너무 많은 task (워커 컨텍스트 폭발)
 - Driver가 `spec/current.md` 직접 수정 (addendum-only)
-- `max_iterations_reached`를 "완료"로 해석
 - Force-push / 히스토리 rewrite
+- Grader 없이 task done 표시
 
 ---
 
 ## 12. Footer
 
 Project owner: Junhyuk Lee (xodn348@tamu.edu).  
-Spec **v3.0** — 2026-05-20, post Anthropic API verification + 4-agent upgrade research integration. Supersedes v2.  
+Spec **v4.0** — 2026-05-20, **session-key (Claude Code) architecture**. Supersedes v3 (which used Anthropic Managed Agents API).  
 README = public intro. 본 문서 = 엔지니어링 진실.
