@@ -44,7 +44,11 @@ Spawn workers in parallel — **multiple `Agent` calls in a single message** (Cl
 Per `Agent` call:
 - `subagent_type = "general-purpose"`
 - `model` = per `workers.json` (Opus for CEO/GC, Haiku for the rest)
-- `prompt` = content of `workers/{name}.md` body + task description + relevant file paths in the repo
+- `prompt` = content of `workers/{name}.md` body + the task line + paths to relevant spec files (`spec/current.md`, `spec/milestones/{M}.md`, `spec/addenda.md`)
+
+**Source of truth:** Workers run in the same cloned repo cwd — they Read `spec/*` themselves. Don't paraphrase the spec into the prompt; just point them at the file paths. The spec is canonical; your task description is not.
+
+**Nested fanout:** Workers may spawn their own sub-Agents (research streams, peer officer calls, parallel variants). They return one consolidated answer per invocation regardless. You don't need to coordinate their internal fanout.
 
 Workers return summaries — they don't push themselves.
 

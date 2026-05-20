@@ -45,10 +45,13 @@ L3  Workers     workers/*.md (CEO · CTO · CFO · CMO · COO · GC) — subagen
 L4  GitHub      xodn348/<project> — spec, plan, events.ndjson, state.json
 ```
 
+> **🟢 Source of truth = GitHub spec.** `xodn348/<project>/spec/` is canonical for everything Pegasus knows about the project. Driver, every worker, and the grader read `spec/current.md` + `spec/milestones/<M>.md` + `spec/addenda.md` directly from the cloned cwd. If a Driver-passed task description disagrees with the spec, **the spec wins.** No in-memory shortcut, no Driver-paraphrased "context" replaces a Read of the spec file.
+
 **Cross-cutting:**
-- **State = GitHub.** `state.json`만이 cross-tick 진실. 별도 memory store API 없음.
-- **Worker = system prompt.** `workers/*.md` 본문을 `Agent` tool의 `prompt`에 주입.
-- **Grader = subagent.** tick 끝에 별도 grader `Agent` 호출 (rubric + 작업 결과 보여줌, satisfied/needs_more_work/failed 판정).
+- **State = GitHub.** `state.json` + `spec/*` only cross-tick 진실. 별도 memory store API 없음.
+- **Worker = system prompt + repo access.** `workers/*.md` 본문을 `Agent` tool의 `prompt`에 주입 + 워커는 cwd의 `spec/*`를 직접 Read.
+- **Workers can fanout.** 모든 워커가 `Agent` tool 보유 — 자체 subagent (Explore, general-purpose) 또는 peer officer (다른 워커 .md 본문 주입) 병렬 호출 가능. cap 3 per call. Driver는 워커 1명당 1개 통합된 답을 기대.
+- **Grader = subagent.** tick 끝에 별도 grader `Agent` 호출 (rubric 파일 경로 + diff 보여줌, satisfied/needs_more_work/failed 판정).
 - **Mobile push = `PushNotification` tool.** Claude Code 네이티브, relay 안 필요.
 - **비용 = Claude Code 구독.** per-token API billing 없음.
 
