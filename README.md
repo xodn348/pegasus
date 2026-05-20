@@ -49,7 +49,7 @@ Pegasus stands on the shoulders of several MIT-licensed projects whose patterns 
 | Source | License | What we borrowed |
 | --- | --- | --- |
 | [Q00/ouroboros](https://github.com/Q00/ouroboros) | MIT | Spec-seed pattern, Stage 2 semantic intent check, ambiguity-gated interview philosophy |
-| [code-yeongyu/oh-my-codex](https://github.com/code-yeongyu/oh-my-codex) (OMX) | MIT (per `package.json`) | `deep-interview` skill structure (3-stage, ambiguity ≤ 0.15 gate, pressure pass) + `ralplan` consensus planning pattern — both reused via the user's `pegasus-init` skill |
+| [code-yeongyu/oh-my-codex](https://github.com/code-yeongyu/oh-my-codex) | MIT (per `package.json`) | `deep-interview` skill structure (3-stage, ambiguity ≤ 0.15 gate, pressure pass) + `ralplan` consensus planning pattern — both reused via the user's `pegasus-init` skill |
 | [xodn348/pegasus-os](https://github.com/xodn348/pegasus-os) | (user's own) | `pegasus-init` interview skill, `bus/SCHEMA.md` event schema, reflector rule format, base coding principles |
 | "Ralph loop" terminology | (folklore via [Geoffrey Huntley](https://ghuntley.com/ralph/)) | Worker-iteration pattern in workflow step 5 |
 

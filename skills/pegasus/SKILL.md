@@ -16,11 +16,10 @@ PROJECT.md §2 7-step workflow normative. Leader (L1) interviews, bootstraps, ha
 
 ### `/pegasus start <name>`
 
-1. **Deep interview (20–30 min).** Invoke `~/code/pegasus-os/claude/skills/pegasus-init/SKILL.md` **verbatim** (15Q, 3-stage, ambiguity ≤ 0.15 gate, pressure pass, readiness gates — all unchanged). Two output redirects:
-   - `projects/<slug>/PROJECT.md` → `xodn348/<name>/spec/current.md`
-   - `projects/<slug>/INTERVIEW.md` → `xodn348/<name>/spec/interview-transcript.md`
-   Skip pegasus-init's "pegasus run" handoff line — ours is `CronCreate`.
-2. **Synthesize milestones.** Apply `feedback_spec_seed.md` (user memory) **Rules 2–4 verbatim** — every `Acceptance` checklist line from `spec/current.md` becomes one milestone in `workflow/plan.md`; Rule 4's "Alternative interpretations considered" block lives inside `spec/current.md` before freeze. Initialize `workflow/state.json` (phase=planning).
+1. **Deep interview (20–30 min).** Invoke `skills/pegasus-init/SKILL.md` (vendored from pegasus-os per PROJECT.md §8 ADAPT — 15Q, 3-stage, ambiguity ≤ 0.15 gate, pressure pass, readiness gates). Output goes directly to the cloned `xodn348/<name>/` working dir:
+   - `spec/current.md` (the spec)
+   - `spec/interview-transcript.md` (Q&A trace)
+2. **Synthesize milestones.** Apply `claude/sops/spec-seed.md` Rules 2–4 — every `Acceptance` checklist line from `spec/current.md` becomes one milestone in `workflow/plan.md`; Rule 4's "Alternative interpretations considered" block lives inside `spec/current.md` before freeze. Initialize `workflow/state.json` (phase=planning).
 3. **Acceptance rubrics.** Per milestone: write `spec/milestones/M<n>.md` = its Acceptance line + one observable verification (test cmd / file existence / metric threshold). Grader reads this per tick.
 4. **Repo bootstrap.** Create `xodn348/<name>` (private). Push initial spec + plan + state + empty `workflow/events.ndjson`.
 5. **Routine register.** Use `CronCreate` tool — `schedule="0 * * * *"`, `name="[<name>] driver"`, `prompt` = substituted `claude/routines/leader-driver.md` (substitute `{{PROJECT_NAME}}` + `{{REPO_URL}}`). Capture returned cron id → `state.json.routine_id`. Push.
@@ -63,10 +62,19 @@ When Driver spawns workers via `Agent`:
 
 ---
 
-## Reuse from pegasus-os
+## Reuse from pegasus-os — vendored per PROJECT.md §8
 
-- `skills/pegasus-init/SKILL.md` — interview chain (80% reused)
-- `sops/spec-seed.md` — spec finalization
-- `bus/SCHEMA.md` — event schema
+Pegasus is self-contained. The reusable assets were **copied** (VERBATIM or ADAPTED) into this repo so the driver tick doesn't depend on `~/code/pegasus-os/` being present:
 
-Don't copy. Reference by path. Pegasus repo only contains the **glue + delta**.
+| File in this repo | Origin | Mode |
+|---|---|---|
+| `claude/PRINCIPLES.md` | `pegasus-os/claude/CLAUDE.md` §1 (base principles) | VERBATIM |
+| `claude/bus/SCHEMA.md` | `pegasus-os/claude/bus/SCHEMA.md` | VERBATIM + project-bus kinds |
+| `claude/reflectors/violation-rules.md` | `pegasus-os/claude/reflectors/...` | VERBATIM |
+| `claude/reflectors/friction-rules.md` | `pegasus-os/claude/reflectors/...` | VERBATIM |
+| `claude/sops/parallel-subagents.md` | `pegasus-os/claude/sops/...` | ADAPT (pegasus runtime) |
+| `claude/sops/spec-seed.md` | `pegasus-os/claude/sops/...` | ADAPT (GitHub-spec layout) |
+| `claude/sops/worktree-parallel.md` | `pegasus-os/claude/sops/...` | ADAPT (Agent fanout, no tmux) |
+| `skills/pegasus-init/SKILL.md` | `pegasus-os/claude/skills/pegasus-init/` | ADAPT (CronCreate handoff) |
+
+**Not reused** (PROJECT.md §8 SKIP): `daily-self-improve`, `oss-contributor`, `weekly-retro`, `kernel` hooks — those are pegasus-os host-only.
