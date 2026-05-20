@@ -1,337 +1,157 @@
-# Pegasus — PROJECT.md (v2)
+# Pegasus — PROJECT.md (v3)
 
-> **Authoritative spec.** Replaces v1 (2026-05-19) after Anthropic Managed Agents API verification. All v1 primitive names (Goal / Agent Team / Agent View) were aspirational — v2 uses the actual shipped feature names.
+## 1. Purpose
 
----
+**클라우드 네이티브 자율 프로젝트 리더.** 사용자가 폰에서 멀티위크 프로젝트를 시작 → Anthropic 클라우드로 핸드오프 → **노트북 끔** → 프로젝트가 스스로 완료. 사용자는 (a) 정말 본인이 결정해야 할 때 또는 (b) 완료 시에만 호출됨.
 
-## 1. Intent
+기반: Anthropic Managed Agents (Outcomes, Multiagent Orchestration, Memory, Scheduled Routines).
 
-Build a **cloud-native autonomous project leader** for Claude such that:
+### 성공 기준
+- `/pegasus start` → 터미널 상태까지, 빌드 윈도우 중 ≥4h 노트북 off
+- 모든 milestone satisfied → 루틴 self-disable
+- 완료 5분 이내 모바일 알림
+- 중간 질문 → `/pegasus tell` → 다음 tick이 반영
 
-> The user starts a multi-week software project from their phone, hands it off to Anthropic's cloud, **turns the laptop off**, and the project completes itself — committed to GitHub, with the user being interrupted only when (a) a decision is genuinely the user's to make or (b) the project is done.
-
-This is a *dev tool that owns a project end-to-end on Anthropic's cloud*. It uses Anthropic's Managed Agents primitives (Outcomes, Multiagent Orchestration, Memory, Subagent, Dreaming) as the substrate.
-
-### Success criteria
-
-1. Smoke project (markdown TOC generator) completes from `/pegasus start` to terminal state with the user's laptop powered off for ≥ 4 hours of the build window.
-2. Driver routine self-terminates when all milestones reach satisfied state.
-3. User receives a notification within 5 minutes of completion.
-4. Mid-project clarification → user replies via `/pegasus tell` from mobile → next tick incorporates it.
-
-### Non-goals (explicit)
-
-- ❌ Custom UI. The Claude Console audit log + session event stream is the monitor.
-- ❌ Self-hosted runner. Anthropic Managed Agents only.
-- ❌ PR-gated workflow. Auto-merge to `main`.
-- ❌ Sub-hour tick cadence. Anthropic routine min is 1h.
-- ❌ Multi-project routines. One project = one repo = one routine.
-- ❌ Reinventing interview / planning / worker loops — reuse `pegasus-init`, `deep-interview`, `prometheus`, `ralplan`, plus the `worktree-parallel.md` SOP.
+### Non-goals
+- 커스텀 UI (Claude Console로 충분) · 셀프호스트 러너 · PR 게이트 (auto-merge) · sub-hour cadence · 멀티 프로젝트 루틴 · 인터뷰/플래닝 스킬 재발명
 
 ---
 
-## 2. User workflow (2026-05-17 original, normative)
+## 2. Workflow (normative, 2026-05-17)
 
-The 7 steps Junhyuk specified during the original design session. v2 implements these literally:
+1. 사용자 클로드 세션에서 프로젝트 시작
+2. 리더가 딥 인터뷰 (20–30분)
+3. 리더가 아키텍처/플랜 → spec
+4. 리더가 워커 병렬 호출, 각자 spec 전달
+5. 워커는 ralph 루프로 완료
+6. 리더가 통합 + 사용자 호출 최소화
+7. 완료 시 알림
 
-1. **사용자가 클로드 세션을 통해 프로젝트를 시작**
-2. **리더 에이전트가 딥 인터뷰** — 20–30분
-3. **리더 에이전트가 전체 아키텍처/워크플로/task → spec으로 변환**
-4. **리더 에이전트가 subagent 병렬 호출, 각자 spec 전달**
-5. **각 subagent는 받은 spec을 ralph 루프로 끝까지 완료**
-6. **리더가 결과 통합 + 사용자 호출 (최대한 적게)**
-7. **완료 시 사용자에게 알림**
-
-Additional invariants:
-- 사용자 컴퓨터가 꺼져도 동작
-- 루틴은 프로젝트당 1개, `[<project>] driver`
-- 완료 시 routine 자동 비활성
-- 모바일 알림
+불변: 컴퓨터 off OK · 1 프로젝트 = 1 리포 = 1 루틴 · 완료 시 루틴 자동 비활성 · 모바일 푸시
 
 ---
 
-## 3. Architecture — four layers
+## 3. Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  L0 — User Terminal:  Claude Mobile App                                  │
-│  • /pegasus start <name>       • Claude Console에서 audit log 확인       │
-│  • /pegasus tell <name> "..."  • 세션 이벤트 stream으로 진행 모니터      │
-│  • /pegasus status / stop                                                │
-└────────────────────┬─────────────────────────────────────────────────────┘
-                     │
-                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  L1 — Leader (Claude Code session, ephemeral)                            │
-│  • 딥 인터뷰 (deep-interview / pegasus-init / ralplan)                   │
-│  • spec/architecture/plan 작성                                            │
-│  • xodn348/<project> 부트스트랩                                          │
-│  • Cron Routine 등록 → 핸드오프 → 세션 종료 OK                           │
-└────────────────────┬─────────────────────────────────────────────────────┘
-                     │ creates ONE routine
-                     │ name = "[<project>] driver"
-                     │ schedule = "0 * * * *"
-                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  L2 — Driver (Managed Agent session, fires per tick)                     │
-│  • 매 tick마다 새 Managed Agent session 생성                              │
-│  • 현재 milestone에 대해 user.define_outcome 발사 (rubric 첨부)          │
-│  • Memory store에서 cross-tick 상태 로드                                  │
-│  • plan.md의 ready task 선택 → Multiagent Orchestration으로 위임         │
-│  • Outcome grader가 milestone "satisfied" 판정 → state.json에 done 표시  │
-│  • 모든 milestone done → 루틴 self-disable                                │
-└────────────────────┬─────────────────────────────────────────────────────┘
-                     │ delegates to specialists at runtime
-                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  L3 — Workers (Multiagent Orchestration specialists)                     │
-│  • Lead agent (Driver)가 런타임에 specialist 호출, 선언적 roster 아님    │
-│  • 각 worker: 자체 모델/프롬프트/도구, 공유 파일시스템에서 병렬 작동      │
-│  • 각자 ralph 루프 (테스트 통과까지 자체 반복)                            │
-│  • 결과를 lead agent에 반환 → Driver가 main에 통합                       │
-└────────────────────┬─────────────────────────────────────────────────────┘
-                     │ all read/write
-                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  L4 — Shared State: GitHub xodn348/<project>                             │
-│  spec/  workflow/plan.md  events.ndjson  subagents/<id>/  output/        │
-│  questions/pending.md  state.json                                        │
-└──────────────────────────────────────────────────────────────────────────┘
+L0  Mobile      /pegasus start | tell | status | stop
+     ↓
+L1  Leader      딥 인터뷰 → spec/plan → repo 부트스트랩 → memory_store 생성 → cron 등록 → 핸드오프
+     ↓  creates  [<project>] driver  (hourly)
+L2  Driver      매 tick: state 로드 → Outcome 선언 → multiagent 위임 → 통합 → state 갱신
+     ↓  delegates
+L3  Workers     C-suite specialists (CEO · CTO · CFO · CMO · COO · GC), ralph 루프
+     ↓  read/write
+L4  GitHub      xodn348/<project> — spec, plan, events.ndjson, state.json
 ```
 
-### Why each layer is where it is
-
-| Layer | Role | Non-negotiable because |
-|---|---|---|
-| L0 Mobile | Entry + monitor | Computer-off baseline. Desktop is incidental. |
-| L1 Leader | Interview + bootstrap | Interviews are interactive. Cron has no human. |
-| L2 Driver | Cron-fired Managed Agent | Anthropic Routine cron = "computer off" satisfied. |
-| L3 Workers | Multiagent Orchestration | Native parallelism, shared FS, persistent event log. |
-| L4 GitHub | Source of truth | Auditable, hand-editable, survives outages. |
+**Cross-cutting (v1 필수):**
+- **Memory store** workspace-scoped (cross-agent). Leader 생성 → Driver 매 tick `/mnt/memory/` 마운트. `state.json`이 진실
+- **Prompt caching** `cache_control` 1h TTL → 시스템 프롬프트 캐시 hit 90% 할인. Hourly cron과 정확히 정합
+- **Model tiering** Haiku = 워커 / Sonnet = Driver coordinator / Opus = 어려운 결정만 → 4–6× 비용 절감
+- **Worker별 MCP** CFO+Stripe, COO+Linear, CMO+Notion, CTO+GitHub, GC+web_search (v1엔 1–2개만, 나머지 v1.5)
+- **Anthropic prebuilt skills** xlsx / pdf / pptx / docx 기본 활용
 
 ---
 
-## 4. Anthropic Managed Agents primitives — actual shipped features
+## 4. Anthropic primitives
 
-Verified against [claude.com/blog/new-in-claude-managed-agents](https://claude.com/blog/new-in-claude-managed-agents), [Outcomes cookbook](https://platform.claude.com/cookbook/managed-agents-cma-verify-with-outcome-grader), and 9to5mac coverage. Beta header required: `managed-agents-2026-04-01`.
+Beta header `managed-agents-2026-04-01`. Verified vs official cookbooks.
 
-| Primitive | What it does | Where we use it |
-|---|---|---|
-| **Outcomes** | Declarative milestone with `description` + `rubric` (text or file) + `max_iterations`. A separate grader LLM evaluates the agent's work against the rubric. Terminal states: `satisfied` / `failed` / `max_iterations_reached` / `interrupted`. Posted via `user.define_outcome` event. | Each Driver tick declares an Outcome for the **current milestone**. Grader's `satisfied` verdict → milestone done in state.json. |
-| **Multiagent Orchestration** | Lead agent delegates to specialists at runtime (own model/prompt/tools), parallel on shared filesystem, persistent event log. **Not a declarative team manifest** — the lead agent decides who/when at runtime. | Driver = lead agent. Workers = specialists. Driver picks worker per ready task. |
-| **Memory** | Per-agent persistent store, accessed across that agent's sessions. Public beta. | Driver Managed Agent's memory holds cross-tick context (spec hash, in-progress task ids, recent failures). |
-| **Subagent** | Additional Claude model called by main agent for sub-tasks. Worktree isolation is a separate Claude Code harness feature. | Used inside L3 specialists when they need deeper recursion. |
-| **Dreaming** | Background self-improvement reviewing past sessions + memory. Research preview, no public config. | **Skip v1.** Re-evaluate after smoke test. |
-| **Session event stream + Console audit log** | Every session emits structured events. Visible in Claude Console. | Mobile monitoring (`/pegasus status` is the fallback when offline). |
-
-### Renames since v1
-
-| v1 name (wrong) | v2 actual name | What changed |
-|---|---|---|
-| Goal | **Outcomes** | No `success_check` callable, no `timeout` field. Rubric + max_iterations only. |
-| Agent Team | **Multiagent Orchestration** | No team YAML manifest. Lead agent delegates at runtime. |
-| Agent View | (dropped) | No such product. Console audit log + event stream replace it. |
-| Webhook `goal_met` | Session event `session.outcome_evaluation_ended` | Real event name. Terminal `result` field carries satisfied/failed/etc. |
-
----
-
-## 5. Outcomes + max_iterations — the iteration model
-
-This is the v2's most important constraint. Read carefully.
-
-### What Outcomes actually is
-
-When a Managed Agent session has an Outcome attached, **a separate grader LLM** evaluates whether the agent's work satisfies the rubric. The agent gets up to `max_iterations` (default 3, max 20) rounds: work → grader checks → not satisfied → work more → grader checks again → ... until grader says satisfied OR cap hit.
-
-- `max_iterations` is bounded by Anthropic at **20 hard**.
-- One Outcome lives in **one session**. It does not persist across sessions.
-
-### Why this matters for multi-week projects
-
-A multi-week Pegasus project cannot be one giant Outcome — 20 grader evaluations is not enough to converge an entire project, and Outcomes don't span sessions anyway. So the model is:
-
-**One Outcome per Driver tick, scoped to one milestone-shaped chunk of work.**
-
-| Layer | Lifespan | Cap |
-|---|---|---|
-| Project | weeks–months | unlimited (we track in state.json) |
-| Milestone | hours–days | unlimited tick count, but one Outcome per tick |
-| Tick | < 15 min | one Outcome, `max_iterations=20` (Driver picks ~5) |
-
-### How a tick uses Outcomes
-
-1. Driver wakes (cron fires, fresh Managed Agent session).
-2. Driver reads `workflow/state.json`, picks ready tasks for the current milestone.
-3. Driver declares Outcome: `description: "Advance milestone <M> by completing tasks <t1, t2, t3>"`, `rubric: <link to spec/milestones/<M>.md acceptance criteria>`, `max_iterations: 5`.
-4. Driver delegates to workers via Multiagent Orchestration.
-5. Workers commit to their branches; Driver integrates.
-6. Driver requests grader evaluation.
-7. If `satisfied`: state.json updates (milestone advances), bus event `tick_satisfied`. Routine waits for next cron tick.
-8. If `max_iterations_reached`: bus event `tick_max_iterations`, milestone stays in progress, next tick retries.
-9. If `failed`: bus event `tick_failed`, milestone marked blocked, possible user escalation.
-
-### Project termination
-
-Project is `done` when all milestones in `workflow/plan.md` are status `done` in `state.json`. The cron routine self-disables at that point. **Project termination is OUR state machine, not Outcomes.** Outcomes only judge per-tick convergence.
-
----
-
-## 6. Lifecycle — one project end to end
-
-| Step | Where | What happens | Output committed |
-|---|---|---|---|
-| 1 | L0 mobile | `/pegasus start gardener` | — |
-| 2 | L1 Leader | 25-min deep interview (pegasus-init + ralplan) | `spec/current.md`, `spec/interview-transcript.md` |
-| 3 | L1 Leader | Milestone synthesis | `workflow/plan.md` (milestones list), `workflow/state.json`, `spec/milestones/M1.md` … |
-| 4 | L1 Leader | Repo create + initial commit | `xodn348/gardener` initialized |
-| 5 | L1 Leader | Cron routine register | `[gardener] driver` enabled, hourly |
-| 6 | L1 → L0 | "Handed off. Phone off OK." | — |
-| 7 | L2 Driver (hourly) | Outcome per current milestone, delegate, integrate, grader | `events.ndjson` += tick events |
-| 8 | L3 Workers | ralph loops on tasks within tick | subagent branches |
-| 9 | L2 Driver | Grader `satisfied` → milestone done | state.json updates |
-| 10 | L0 mobile | Optional: `/pegasus status` (or Console audit log) | — |
-| 11 | L2 Driver | All milestones done → disable routine | `state.json.phase = "done"` |
-| 12 | L0 mobile | Notification on completion | — |
-| 13 | repo | Permanent audit | — |
-
-Hard guarantee: between step 6 and step 12, the laptop is unnecessary.
-
----
-
-## 7. Decision boundaries
-
-Driver may decide alone. Anything outside → `questions/pending.md` + `phase = "awaiting_user"`.
-
-| Decision | Driver autonomous? |
+| Primitive | Pegasus 사용 |
 |---|---|
-| Pick next ready task | ✅ |
-| Set tick `max_iterations` (≤ 20) | ✅ |
-| Declare Outcome rubric from spec | ✅ (rubric file is spec; Driver only references it) |
-| Spawn ≤ 3 workers via Multiagent Orchestration | ✅ |
-| Integrate worker branch (fast-forward) | ✅ |
-| Integrate via 3-way merge with conflicts | ❌ |
-| Revert merge after grader/verify fail | ✅ once; escalate on 2nd |
-| Add a new milestone | ❌ |
-| Modify `spec/current.md` (vs addendum) | ❌ |
-| Push to `main` | ✅ |
-| Force-push / rewrite history | ❌ |
-| Mark milestone done without grader `satisfied` | ❌ |
-| Disable routine when all milestones done | ✅ |
+| **Outcomes** | tick당 1개. rubric = spec 파일. `max_iterations = 5` (하드 캡 20). 터미널: satisfied / failed / max_iterations_reached / interrupted |
+| **Multiagent Orchestration** | `multiagent={"type":"coordinator","agents":[...]}` 선언 + 런타임 `agent_toolset_20260401` 호출. depth 1, ≤20 unique, ≤25 concurrent |
+| **Memory store** | workspace-scoped, `/mnt/memory/`. CAS via `content_sha256`. 30일 버전 보관. ≤8 stores/session, 100KB/memory cap |
+| **Scheduled Routines** | header `experimental-cc-routine-2026-04-01`. tick마다 **새 세션** — memory_store + GitHub만 연속 |
+| **Webhooks** | `session.outcome_evaluation_ended` 등. 모바일 푸시는 native 없음 → 직접 relay 필요 |
+| **Dreaming** | v1 skip. 스모크 후 재평가 |
 
 ---
 
-## 8. State + bus contracts
+## 5. Outcomes — tick 단위 수렴
 
-### `workflow/state.json`
+- 1 Outcome = 1 세션 = 1 tick (세션 간 이월 없음)
+- `max_iterations` = grader 평가 횟수 (cap 20, Driver 기본 5)
+- "프로젝트 완료"는 **Outcomes가 아니라 우리 `state.json` 상태머신**이 결정. 모든 milestone done → 루틴 self-disable
 
-```json
-{
-  "name": "<project>",
-  "created_utc": "<iso8601>",
-  "phase": "planning | executing | awaiting_user | done",
-  "current_milestone_id": "M1",
-  "milestones": [
-    {
-      "id": "M1",
-      "title": "...",
-      "status": "pending | in_progress | done | blocked",
-      "rubric_path": "spec/milestones/M1.md",
-      "tasks": [
-        { "id": "t1", "title": "...", "status": "pending|in_progress|done|blocked", "depends_on": [] }
-      ]
-    }
-  ],
-  "tick_count": 0,
-  "last_tick_utc": null,
-  "completion_pct": 0,
-  "routine_id": "<anthropic-routine-id>",
-  "managed_agent_id": "<anthropic-agent-id>"
-}
-```
-
-### `events.ndjson` event kinds
-
-```
-project_init             — Leader bootstrap
-user_tell                — addendum from mobile
-question_raised          — Driver wrote questions/pending.md
-question_resolved        — addendum matched an open question
-tick_started             — Driver session opened, Outcome declared
-tick_satisfied           — Outcome grader returned satisfied
-tick_failed              — Outcome grader returned failed
-tick_max_iterations      — hit the cap mid-convergence; retry next tick
-tick_interrupted         — session terminated early
-specialist_invoked       — Multiagent Orchestration delegation
-specialist_returned      — specialist finished, branch ready
-integration_failed       — merge or verify failed; reverted
-milestone_advanced       — milestone status flipped to done
-escalation               — phase flipped to awaiting_user
-pegasus_done             — all milestones done; routine disabled
-pegasus_stopped          — user-initiated /pegasus stop
-```
-
-Anthropic session events (`session.outcome_evaluation_ended` etc.) are mirrored into this bus by the Driver so the bus is the single timeline.
+tick 동작:
+1. Driver wake (새 세션) → state 로드 → 현재 milestone ready task 선택
+2. `user.define_outcome` 발사 — description + rubric path + max_iterations=5
+3. multiagent 위임 → 워커 작업 → grader 평가
+4. `satisfied` → state 갱신 → 다음 cron tick 대기
+5. `max_iterations_reached` → milestone 진행중 유지, 다음 tick 재시도
+6. `failed` → 차단 표시 → 사용자 escalation
 
 ---
 
-## 9. Reuse from `xodn348/pegasus-os`
+## 6. Decision boundaries
 
-Aggressive reuse. No reinvention.
+| Driver 자율 | 사용자 확인 |
+|---|---|
+| next task pick · rubric 인용 · ≤3 워커 · fast-forward 머지 · 1회 revert · push to main · 루틴 disable | 3-way 충돌 머지 · milestone 추가 · spec/current.md 수정 · force push · grader 없이 done 표시 · 2회째 revert |
 
-- **VERBATIM**: `claude/bus/SCHEMA.md` (event schema generalizes), `claude/CLAUDE.md` base principles (Think / Simplicity / Surgical / Goal-Driven), `claude/reflectors/violation-rules.md` + `friction-rules.md`.
-- **ADAPT**: `claude/sops/parallel-subagents.md`, `claude/sops/spec-seed.md`, `claude/sops/worktree-parallel.md` (inline into worker prompt), `claude/skills/pegasus-init/SKILL.md` (already 80% of Leader interview logic).
-- **INSPIRE**: pegasus-os cloud-routine pattern (cron + ephemeral runner + commit-only writes).
-- **SKIP**: `daily-self-improve.md`, `oss-contributor-prompt.md`, `weekly-retro.md`, `kernel/hooks/*.sh` — pegasus-os specific.
-
-Two buses run in parallel by design — the Mac-side `pegasus-os/claude/bus/events.ndjson` (user's cross-session observability) and the per-project `xodn348/<project>/events.ndjson` (project-lifecycle observability). They share schema, they don't share data.
+경계 밖 → `questions/pending.md` + `phase = "awaiting_user"` + 모바일 푸시.
 
 ---
 
-## 10. v1 milestones (post-PROJECT.md surgery, post-verification)
+## 7. State + bus
 
-Tracked in `workflow/plan.md` once we bootstrap pegasus through itself.
+**`workflow/state.json`** — name, phase (planning / executing / awaiting_user / done), current_milestone_id, milestones[…], tick_count, completion_pct, routine_id, managed_agent_id.
 
-| # | Task | Lane |
-|---|---|---|
-| 1 | Rewrite `skills/pegasus/SKILL.md` to register cron routine + send `user.define_outcome` events per tick | skill |
-| 2 | Rewrite `claude/routines/leader-driver.md` to: load state → declare Outcome → delegate via Multiagent Orchestration → wait for grader → update state | routine |
-| 3 | `claude/lib/outcome-helpers.md` — how to format `user.define_outcome` events with rubric file references | new file |
-| 4 | `claude/lib/event-handlers.md` — map `session.outcome_evaluation_ended` and friends to our bus event kinds | new file |
-| 5 | Extract from pegasus-os: `bus/SCHEMA.md`, `reflectors/{violation,friction}-rules.md`, base principles | extraction |
-| 6 | Adapt SOPs: `parallel-subagents.md`, `spec-seed.md`, `worktree-parallel.md` | extraction |
-| 7 | Reflectors v0.1 — three Pegasus-specific violation rules (decision boundary breach, scope drift, mid-run reinterview) | reflectors |
-| 8 | Smoke test — `markdown-toc` project end-to-end | end-to-end |
+**`events.ndjson`** kinds — project_init, user_tell, question_raised / resolved, tick_started / satisfied / failed / max_iterations / interrupted, specialist_invoked / returned, integration_failed, milestone_advanced, escalation, pegasus_done, pegasus_stopped. Anthropic 세션 이벤트도 미러링.
 
-Yesterday's `c5ac133` (skills/pegasus/SKILL.md + claude/routines/leader-driver.md) is **superseded** by milestones 1–2. Will revert or rewrite when those land.
+**두 bus 병행:** Mac `pegasus-os/claude/bus/events.ndjson` (사용자 cross-session 관찰) + 프로젝트 `xodn348/<project>/events.ndjson` (프로젝트 lifecycle). 스키마 공유, 데이터 분리.
 
 ---
 
-## 11. Open questions (still unknown)
+## 8. Reuse from pegasus-os
 
-1. **Routine prompt body size limit** — no public limit documented. Test before relying on the ~6KB leader-driver.md inline.
-2. **Per-tick session lifecycle** — does a cron routine "tick" create a brand-new Managed Agent session each time, or attach to a persistent one? If the latter, memory and Outcomes carry over; if the former, memory store is the only continuity.
-3. **Mobile notification delivery** — what's the configurable target for `session.outcome_evaluation_ended` notifications? Claude mobile push? Email? Need cookbook follow-up.
-4. **Multiagent Orchestration declarative hooks** — confirmed no public team YAML, but is there a "specialist registry" we can pre-declare, or is delegation purely a runtime prompt-level call?
-5. **Memory beta scope** — confirmed per-agent. If we want project-wide memory across the Leader and the Driver Managed Agents (two different agents), we build that layer ourselves (likely via state.json).
-
-Resolve these via cookbook follow-up, schedule-skill dry-run, or in-context experiment before milestones 1–3 ship.
+- **VERBATIM**: `bus/SCHEMA.md`, base principles (Think / Simplicity / Surgical / Goal-Driven), `reflectors/{violation,friction}-rules.md`
+- **ADAPT**: SOPs (parallel-subagents, spec-seed, worktree-parallel), `skills/pegasus-init` (Leader 인터뷰 80%)
+- **SKIP**: daily-self-improve, oss-contributor, weekly-retro, kernel hooks — pegasus-os 전용
 
 ---
 
-## 12. Anti-patterns
+## 9. v1 milestones
 
-- ❌ Polling for completion — session event stream is the push channel.
-- ❌ Custom UI — Console audit log exists.
-- ❌ Reinventing interview/planning/worker skills.
-- ❌ Treating one Outcome as the project — it's per-tick.
-- ❌ Modifying `spec/current.md` from Driver (addendum-only).
-- ❌ Force-push or rewrite history.
-- ❌ Trusting `max_iterations_reached` as "this is done" — it isn't.
+| # | Task |
+|---|---|
+| 1 | `skills/pegasus/SKILL.md` — 4-verb (start/tell/status/stop) + 인터뷰 체인 + memory_store 생성 + cron 등록 |
+| 2 | `claude/routines/leader-driver.md` — tick 프롬프트: state 로드 → Outcome 선언 → multiagent 위임 → 통합 → state 갱신 |
+| 3 | `workers.json` — C-suite 워커 매핑 (CEO / CTO / CFO / CMO / COO / GC) |
+| 4 | v1 필수 5개 박기 — memory_store · prompt caching · model tiering · worker별 MCP · prebuilt skills |
+| 5 | pegasus-os reuse — bus/SCHEMA.md, base principles, reflectors 추출 |
+| 6 | Smoke — Ebsilon GTM 1-pager (또는 markdown-toc), ≥4h laptop-off 검증 |
 
 ---
 
-## 13. Footer
+## 10. Open questions — resolved 2026-05-20
 
-Project owner: Junhyuk Lee (xodn348@tamu.edu).
-Spec version: **v2.0** — 2026-05-19, post-verification of Anthropic Managed Agents API shape. Supersedes v1 (which used aspirational primitive names).
-README remains the public-facing intro; this file is the engineering source of truth.
+| Q | A |
+|---|---|
+| Routine prompt size limit | 미공개. 6KB 이하 권장. **테스트 필요** |
+| Tick 세션 lifecycle | **새 세션**. memory_store + GitHub만 연속성 보장 |
+| 모바일 푸시 | Anthropic native **없음**. webhook `session.outcome_evaluation_ended` → 직접 relay (Pushover / APNs) |
+| Multiagent 선언적 roster | **있음** — `multiagent={"type":"coordinator","agents":[...]}`. 런타임 위임은 `agent_toolset_20260401` |
+| Memory 스코프 | **workspace-scoped** (per-agent 아님). Leader + Driver가 같은 workspace 공유 → 진실 공유 가능 |
+
+남은 미확정: 루틴 프롬프트 body 한계 (실험으로 확인).
+
+---
+
+## 11. Anti-patterns
+
+- Polling — 세션 이벤트 스트림이 푸시 채널
+- 하나의 Outcome으로 전체 프로젝트 평가 (per-tick임)
+- Driver가 `spec/current.md` 직접 수정 (addendum-only)
+- `max_iterations_reached`를 "완료"로 해석
+- Force-push / 히스토리 rewrite
+
+---
+
+## 12. Footer
+
+Project owner: Junhyuk Lee (xodn348@tamu.edu).  
+Spec **v3.0** — 2026-05-20, post Anthropic API verification + 4-agent upgrade research integration. Supersedes v2.  
+README = public intro. 본 문서 = 엔지니어링 진실.
