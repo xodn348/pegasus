@@ -332,6 +332,6 @@ Resolve these via cookbook follow-up, schedule-skill dry-run, or in-context expe
 
 ## 13. Footer
 
-Project owner: Junhyuk (xodn348@tamu.edu).
+Project owner: Junhyuk Lee (xodn348@tamu.edu).
 Spec version: **v2.0** — 2026-05-19, post-verification of Anthropic Managed Agents API shape. Supersedes v1 (which used aspirational primitive names).
 README remains the public-facing intro; this file is the engineering source of truth.
