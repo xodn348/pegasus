@@ -77,6 +77,33 @@ class PegasusCliTests(unittest.TestCase):
             self.assertIn("spec/current.md", text)
             self.assertIn("spec/updates.md", text)
 
+    def test_run_creates_one_claude_routine_named_after_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["run", tmp, "--name", "demo-project"])
+            routine = root / "workflow" / "claude-routine.md"
+            self.assertIn("Name: demo-project", routine.read_text())
+            main(["run", tmp, "--name", "demo-project"])
+            self.assertIn("Name: demo-project", routine.read_text())
+            with self.assertRaises(SystemExit):
+                main(["run", tmp, "--name", "other-project"])
+
+    def test_stop_deletes_claude_routine_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["run", tmp, "--name", "demo-project"])
+            self.assertTrue((root / "workflow" / "claude-routine.md").exists())
+            main(["stop", tmp])
+            self.assertFalse((root / "workflow" / "claude-routine.md").exists())
+
+    def test_status_deletes_claude_routine_when_done(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["run", tmp, "--name", "demo-project"])
+            (root / "workflow" / "status.md").write_text("# Status\n\nPhase: done\n")
+            main(["status", tmp])
+            self.assertFalse((root / "workflow" / "claude-routine.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

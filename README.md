@@ -1,6 +1,6 @@
 # Pegasus
 
-Pegasus turns a project request into spec-driven cloud agent work.
+Pegasus turns a project request into spec-driven Claude routine work.
 
 You run:
 
@@ -13,7 +13,7 @@ Pegasus then:
 1. asks only the needed questions,
 2. writes the project spec in GitHub,
 3. splits work into smaller specs,
-4. gives those specs to cloud agents,
+4. gives those specs to Claude routine agents,
 5. checks the results,
 6. asks you only for big decisions,
 7. reports completion with evidence.
@@ -28,6 +28,8 @@ Pegasus then:
 ## Core rule
 
 The GitHub spec is the source of truth.
+
+Each project gets one Claude routine named after the project. Pegasus deletes that routine when the project is done.
 
 Agents follow the repo spec, not chat memory.
 

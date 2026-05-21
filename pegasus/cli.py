@@ -18,6 +18,7 @@ class ProjectPaths:
     status: Path
     questions: Path
     requests: Path
+    routine: Path
 
 
 def now() -> str:
@@ -33,6 +34,7 @@ def paths(root: Path) -> ProjectPaths:
         status=root / "workflow" / "status.md",
         questions=root / "workflow" / "questions.md",
         requests=root / "workflow" / "agent-requests",
+        routine=root / "workflow" / "claude-routine.md",
     )
 
 
@@ -127,11 +129,52 @@ Updated: {now()}
 """
 
 
+def routine_name(root: Path, requested: str = "") -> str:
+    return requested.strip() or root.name
+
+
+def render_claude_routine(name: str, root: Path) -> str:
+    return f"""# Claude routine
+
+Name: {name}
+Project: {root}
+Status: registered
+
+Pegasus uses one Claude routine per project.
+The routine name must be the project name.
+When the project is done, Pegasus deletes this file and the routine must be removed from Claude.
+
+Start command:
+
+```text
+claude --name {name} --add-dir {root} --permission-mode auto
+```
+"""
+
+
+def ensure_one_claude_routine(p: ProjectPaths, name: str) -> list[str]:
+    if p.routine.exists():
+        text = p.routine.read_text(encoding="utf-8")
+        expected = f"Name: {name}"
+        if expected not in text:
+            raise SystemExit(f"Existing Claude routine belongs to a different project. Expected {expected} in {p.routine}")
+        return []
+    p.routine.write_text(render_claude_routine(name, p.root), encoding="utf-8")
+    return [str(p.routine.relative_to(p.root))]
+
+
+def cleanup_claude_routine(p: ProjectPaths) -> bool:
+    if not p.routine.exists():
+        return False
+    p.routine.unlink()
+    return True
+
+
 def render_agent_request(task_path: Path, root: Path) -> str:
     task_ref = task_path.relative_to(root)
     return f"""# Agent request
 
-Cloud agent input: `{task_ref}`
+Claude routine input: `{task_ref}`
 
 ## Source of truth
 
@@ -160,7 +203,7 @@ def ensure_agent_requests(p: ProjectPaths) -> list[str]:
     return changed
 
 
-def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
+def init_project(root: Path, goal: str, task_titles: list[str], project_name: str = "") -> list[str]:
     p = paths(root)
     ensure_layout(p)
     changed: list[str] = []
@@ -174,6 +217,8 @@ def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
     if write_if_missing(p.questions, "# Questions\n\nNone.\n"):
         changed.append(str(p.questions.relative_to(root)))
 
+    changed.extend(ensure_one_claude_routine(p, routine_name(root, project_name)))
+
     existing_tasks = sorted(p.tasks.glob("*.md"))
     if not existing_tasks:
         titles = task_titles or ["Clarify implementation plan"]
@@ -185,7 +230,7 @@ def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
 
     changed.extend(ensure_agent_requests(p))
 
-    status_message = "Pegasus prepared task specs and cloud-agent request files."
+    status_message = "Pegasus prepared task specs and Claude routine request files."
     if p.status.exists():
         with p.status.open("a", encoding="utf-8") as fh:
             fh.write(f"\n## {now()}\n\nPegasus run continued. Existing status was preserved.\n")
@@ -198,7 +243,7 @@ def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
 def cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     goal = args.goal or "Define this project from the user's request."
-    changed = init_project(root, goal, args.task)
+    changed = init_project(root, goal, args.task, args.name)
     print("Pegasus run prepared the repo spec.")
     print(f"Repo: {root}")
     print("Changed:")
@@ -226,7 +271,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         print("No Pegasus status found. Run `/pegasus run` first.")
         return 1
     print(f"Status file: {p.status.relative_to(root)}")
-    print(p.status.read_text(encoding="utf-8").strip())
+    status_text = p.status.read_text(encoding="utf-8").strip()
+    print(status_text)
+    if "Phase: done" in status_text and cleanup_claude_routine(p):
+        print("\nDeleted Claude routine after completion.")
     tasks = sorted(p.tasks.glob("*.md")) if p.tasks.exists() else []
     print("\nTask specs:")
     if tasks:
@@ -236,7 +284,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print("- none")
 
     requests = sorted(p.requests.glob("*.md")) if p.requests.exists() else []
-    print("\nCloud agent requests:")
+    print("\nClaude routine requests:")
     if requests:
         for request in requests:
             print(f"- {request.relative_to(root)}")
@@ -252,8 +300,14 @@ def cmd_stop(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     p = paths(root)
     ensure_layout(p)
-    p.status.write_text(render_status("stopped", "Pegasus was stopped by user request."), encoding="utf-8")
+    removed = cleanup_claude_routine(p)
+    message = "Pegasus was stopped by user request."
+    if removed:
+        message += " Claude routine record was deleted."
+    p.status.write_text(render_status("stopped", message), encoding="utf-8")
     print(f"Stopped Pegasus project at {root}")
+    if removed:
+        print("Deleted Claude routine record.")
     return 0
 
 
@@ -265,6 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("repo", help="project repo path")
     run.add_argument("--goal", default="", help="main project goal")
     run.add_argument("--task", action="append", default=[], help="task spec title; repeatable")
+    run.add_argument("--name", default="", help="Claude routine name; defaults to project directory name")
     run.set_defaults(func=cmd_run)
 
     tell = sub.add_parser("tell", help="append instructions")

@@ -2,7 +2,7 @@
 
 Pegasus is a project leader for agent work.
 
-The user starts a project with `/pegasus run`. Pegasus writes a clear spec in the GitHub repo, splits the work into smaller specs, sends those specs to cloud agents, checks the results, and reports back when the work is verified.
+The user starts a project with `/pegasus run`. Pegasus writes a clear spec in the GitHub repo, splits the work into smaller specs, sends those specs to Claude routine agents, checks the results, and reports back when the work is verified.
 
 ## Workflow
 
@@ -10,7 +10,7 @@ The user starts a project with `/pegasus run`. Pegasus writes a clear spec in th
 2. Pegasus asks only the questions it needs.
 3. Pegasus writes the project spec into the GitHub repo.
 4. Pegasus splits the project into smaller task specs.
-5. Cloud agents work from those specs.
+5. Claude routine agents work from those specs.
 6. The GitHub spec is the source of truth for every agent.
 7. Pegasus collects the results and verifies them.
 8. Pegasus asks the user only for big decisions or risky changes.
@@ -34,7 +34,8 @@ Minimum files:
 - `spec/updates.md` — later user instructions
 - `workflow/status.md` — current progress
 - `workflow/questions.md` — questions for the user
-- `workflow/agent-requests/*.md` — cloud agent handoff packets
+- `workflow/claude-routine.md` — one Claude routine named after the project
+- `workflow/agent-requests/*.md` — Claude routine handoff packets
 
 Agents must follow the repo spec over chat history or memory.
 
@@ -43,14 +44,17 @@ Agents must follow the repo spec over chat history or memory.
 - Keep only one active Pegasus repo: `pegasus`.
 - Do not merge this with `pegasus-os`.
 - Avoid vendor lock-in.
-- Support cloud agent work.
+- Support Claude routine work.
+- One project has one Claude routine.
+- The Claude routine name is the project name.
+- Delete the Claude routine when the project is done or stopped.
 - Delegate by spec, not by vague chat instructions.
 - MIT/permissive sources are allowed when provenance is clear.
 - GPL, SUL, custom, or restrictive sources require review first.
 - Do not copy old prototype code or unclear generated output.
-- Do not claim background/cloud work is running unless it is verified.
+- Do not claim Claude routine work is running unless it is verified.
 
 ## Current goal
 
 Reset the repo to a simple, clean public OSS base.
-Then rebuild Pegasus around `/pegasus run`, GitHub specs, cloud agents, and spec-based delegation.
+Then rebuild Pegasus around `/pegasus run`, GitHub specs, Claude routine agents, and spec-based delegation.
