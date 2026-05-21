@@ -20,3 +20,6 @@ auth.json
 logs/
 tmp/
 worktrees/
+# Python generated files
+__pycache__/
+*.py[cod]

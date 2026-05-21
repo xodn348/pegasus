@@ -30,3 +30,14 @@ Pegasus then:
 The GitHub spec is the source of truth.
 
 Agents follow the repo spec, not chat memory.
+
+## Local dry-run
+
+For local development, the same flow can be tested with:
+
+```text
+python -m pegasus run ./my-project --goal "Build the thing"
+python -m pegasus tell ./my-project "Add this requirement"
+python -m pegasus status ./my-project
+python -m pegasus stop ./my-project
+```
