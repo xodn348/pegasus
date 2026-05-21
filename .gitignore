@@ -1,0 +1,22 @@
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*token*
+*secret*
+*api-key*
+credentials.json
+auth.json
+
+# Local Claude / editor / OS state
+.claude/
+.DS_Store
+*.swp
+*.tmp
+
+# Pegasus runtime state; project repos may intentionally commit their own workflow state.
+.cache/
+logs/
+tmp/
+worktrees/

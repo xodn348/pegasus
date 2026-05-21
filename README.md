@@ -1,56 +1,69 @@
 # Pegasus
 
-**Cloud-native autonomous project leader for Claude Code.**
+Pegasus is a clean standalone Claude Code project-leader scaffold.
 
-Start a project from your phone, hand it off via a Claude Code routine, turn your laptop off. Pegasus continues, commits to GitHub, and pings you when there's news.
-
----
-
-## What it is
-
-A `/pegasus` skill + a per-project GitHub repo + an hourly Claude Code Cron routine. You interview, Pegasus executes. Computer-off is the baseline, not a feature.
-
-| Verb                       | What happens                                                            |
-| -------------------------- | ----------------------------------------------------------------------- |
-| `/pegasus start <name>`    | Deep interview → spec → repo `xodn348/<name>` → routine `[<name>] driver` registered via `CronCreate` |
-| `/pegasus status <name>`   | One-screen progress report from `state.json` + `events.ndjson`          |
-| `/pegasus tell <name> "…"` | Append addendum to spec; next tick picks it up                          |
-| `/pegasus stop <name>`     | `CronDelete` the routine; mark project terminated                       |
-
-Built on **Claude Code session primitives** — `CronCreate`/`CronDelete` (Driver lifecycle), `Agent` tool (C-suite worker fanout + self-grading), `PushNotification` (mobile escalation), GitHub (single source of truth). **No Anthropic API key, no Managed Agents beta, no external infrastructure.**
-
----
+It is designed for one job: turn a user-approved project spec into a repeatable
+leader routine that can continue work, ask only when decision boundaries require
+it, and report completion with evidence.
 
 ## Status
 
-🟢 **Spec v4 + scaffold landed.** Pending: deep-interview wiring (reuses `pegasus-init` verbatim), worker ralph-loop semantics, first smoke test. See [`PROJECT.md`](./PROJECT.md) — the engineering source of truth.
+Clean rewrite scaffold. This repo supersedes the earlier prototype history and
+is the canonical home for Pegasus going forward.
 
----
+## What changed in the clean rewrite
 
-## Repo
+- No subtree merge from `pegasus-os`.
+- No wholesale copy of prior adapted bus/SOP/reflector files.
+- The old prototype is treated as requirements history only.
+- Attribution is centralized in [`NOTICE.md`](./NOTICE.md).
+- The repo contains a small, reviewable control surface instead of a personal OS
+  dump.
 
-```
+## Layout
+
+```text
 pegasus/
-├── README.md                       # this file
-├── PROJECT.md                      # engineering source of truth (v4)
-├── LICENSE                         # MIT
-├── workers.json                    # C-suite worker roster (model + tools + skills)
-├── workers/                        # CEO / CTO / CFO / CMO / COO / GC system prompts
-├── skills/pegasus/SKILL.md         # Leader skill — /pegasus start | tell | status | stop
-└── claude/routines/leader-driver.md  # Driver tick prompt (hourly Claude Code Cron)
+├── PROJECT.md                         # engineering source of truth
+├── NOTICE.md                          # provenance and attribution policy
+├── docs/architecture.md               # runtime architecture
+├── schemas/project-event.schema.json  # project lifecycle event envelope
+├── skills/pegasus/SKILL.md            # /pegasus start|tell|status|stop
+├── claude/routines/pegasus-driver.md  # repeatable driver prompt
+├── claude/project-workers/            # small optional worker role prompts
+└── examples/project/                  # minimal project-state example
 ```
 
----
+## Commands
 
-## Credits
+Pegasus exposes one skill with four verbs:
 
-Pegasus stands on the shoulders of several MIT-licensed projects whose patterns we absorbed (concepts only — no code copied).
+```text
+/pegasus start <repo-or-slug>
+/pegasus tell <repo-or-slug> "..."
+/pegasus status <repo-or-slug>
+/pegasus stop <repo-or-slug>
+```
 
-| Source | License | What we borrowed |
-| --- | --- | --- |
-| [Q00/ouroboros](https://github.com/Q00/ouroboros) | MIT | Spec-seed pattern, Stage 2 semantic intent check, ambiguity-gated interview philosophy |
-| [code-yeongyu/oh-my-codex](https://github.com/code-yeongyu/oh-my-codex) | MIT (per `package.json`) | `deep-interview` skill structure (3-stage, ambiguity ≤ 0.15 gate, pressure pass) + `ralplan` consensus planning pattern — both reused via the user's `pegasus-init` skill |
-| [xodn348/pegasus-os](https://github.com/xodn348/pegasus-os) | (user's own) | `pegasus-init` interview skill, `bus/SCHEMA.md` event schema, reflector rule format, base coding principles |
-| "Ralph loop" terminology | (folklore via [Geoffrey Huntley](https://ghuntley.com/ralph/)) | Worker-iteration pattern in workflow step 5 |
+The exact runtime integration is intentionally explicit: if Claude Code routine
+registration is unavailable in the current session, the skill must say so and
+print the manual next step instead of pretending a background routine is armed.
 
-Code originally written by the Pegasus author (Junhyuk Lee) is MIT — see [`LICENSE`](./LICENSE).
+## Safety boundaries
+
+Pegasus never does these without explicit user approval:
+
+- force-push;
+- delete a repository;
+- rewrite Git history;
+- change dependency versions;
+- modify CI or deployment settings;
+- mark a project done without fresh verification evidence.
+
+## Next implementation slice
+
+1. Install the skill into the target Claude Code skills path.
+2. Dry-run `/pegasus status` against `examples/project/`.
+3. Wire routine registration only after the current Claude Code runtime surface is
+   verified.
+4. Add fixture tests for state and event parsing before expanding automation.

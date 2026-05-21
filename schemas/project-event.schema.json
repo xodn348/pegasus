@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xodn348.github.io/pegasus/schemas/project-event.schema.json",
+  "title": "Pegasus project event",
+  "type": "object",
+  "required": ["ts", "kind", "repo"],
+  "properties": {
+    "ts": { "type": "string", "format": "date-time" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "project_started",
+        "tick_started",
+        "lane_started",
+        "lane_verified",
+        "user_tell",
+        "question_raised",
+        "question_resolved",
+        "escalation",
+        "project_stopped",
+        "project_done"
+      ]
+    },
+    "repo": { "type": "string" },
+    "lane": { "type": "string" },
+    "outcome": { "type": "string" },
+    "reason": { "type": "string" },
+    "evidence": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}
