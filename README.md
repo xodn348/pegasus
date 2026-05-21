@@ -4,19 +4,17 @@ Pegasus turns a project request into spec-driven Claude routine work.
 
 ## Install
 
-Recommended one-line install for agents and guarded runtimes:
+One-line install:
 
 ```sh
-python3 -m pip install --user --upgrade "git+https://github.com/xodn348/pegasus.git" && python3 -m pegasus install-integrations
+curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
 ```
 
-This installs:
+This installs everything Pegasus needs:
 
 - `pegasus` CLI
 - Codex skill: `~/.codex/skills/pegasus/SKILL.md`
 - Claude Code slash command: `~/.claude/commands/pegasus.md`
-
-It avoids the `curl | sh` / download-then-run pattern that many automatic safety classifiers block because it executes an external GitHub script directly.
 
 If `pegasus` is not found after install, add this to your shell profile:
 
@@ -24,29 +22,17 @@ If `pegasus` is not found after install, add this to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Isolated venv install:
+Agent-safe install if your runtime blocks `curl | sh`:
 
 ```sh
-git clone https://github.com/xodn348/pegasus.git ~/.local/share/pegasus/src
-python3 -m venv ~/.local/share/pegasus/venv
-~/.local/share/pegasus/venv/bin/python -m pip install --upgrade ~/.local/share/pegasus/src
-mkdir -p ~/.local/bin
-ln -sf ~/.local/share/pegasus/venv/bin/pegasus ~/.local/bin/pegasus
-~/.local/bin/pegasus install-integrations
-```
-
-Optional script installer for interactive human terminals. This also installs the Codex skill and Claude Code command:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
+python3 -m pip install --user --upgrade "git+https://github.com/xodn348/pegasus.git" && python3 -m pegasus install-integrations
 ```
 
 Requirements:
 
 - Python 3.11+
-- `git` for the recommended install
-- Codex and/or Claude Code if you want the `/pegasus` agent command surfaces
-- `curl` and `tar` only for the optional script installer
+- `curl` and `tar` for the one-line installer
+- `git` for the agent-safe installer
 - Claude CLI only if you want Claude routine verification
 
 ## Quick start
@@ -73,7 +59,7 @@ pegasus stop .
 
 ## Agent commands
 
-After `pegasus install-integrations`, both agent apps can use Pegasus from a repo:
+After install, both agent apps can use Pegasus from a repo:
 
 Codex:
 

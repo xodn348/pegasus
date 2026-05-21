@@ -61,12 +61,17 @@ fi
 cat <<EOF
 Pegasus installed.
 
-Command:
-  $BIN_DIR/pegasus
+Installed:
+- CLI: $BIN_DIR/pegasus
+- Codex skill: ~/.codex/skills/pegasus/SKILL.md
+- Claude Code command: ~/.claude/commands/pegasus.md
 
 Try:
   pegasus run . --goal "Describe the project goal"
   pegasus status .
+
+Claude Code:
+  /pegasus run . --goal "Describe the project goal"
 
 If 'pegasus' is not found, add this to your shell profile:
   export PATH="$BIN_DIR:\$PATH"
