@@ -34,6 +34,7 @@ Minimum files:
 - `spec/updates.md` — later user instructions
 - `workflow/status.md` — current progress
 - `workflow/questions.md` — questions for the user
+- `workflow/agent-requests/*.md` — cloud agent handoff packets
 
 Agents must follow the repo spec over chat history or memory.
 

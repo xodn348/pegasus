@@ -17,6 +17,7 @@ class ProjectPaths:
     updates: Path
     status: Path
     questions: Path
+    requests: Path
 
 
 def now() -> str:
@@ -31,6 +32,7 @@ def paths(root: Path) -> ProjectPaths:
         updates=root / "spec" / "updates.md",
         status=root / "workflow" / "status.md",
         questions=root / "workflow" / "questions.md",
+        requests=root / "workflow" / "agent-requests",
     )
 
 
@@ -38,6 +40,7 @@ def ensure_layout(p: ProjectPaths) -> None:
     p.spec.parent.mkdir(parents=True, exist_ok=True)
     p.tasks.mkdir(parents=True, exist_ok=True)
     p.status.parent.mkdir(parents=True, exist_ok=True)
+    p.requests.mkdir(parents=True, exist_ok=True)
 
 
 def slugify(text: str, fallback: str = "task") -> str:
@@ -124,6 +127,39 @@ Updated: {now()}
 """
 
 
+def render_agent_request(task_path: Path, root: Path) -> str:
+    task_ref = task_path.relative_to(root)
+    return f"""# Agent request
+
+Cloud agent input: `{task_ref}`
+
+## Source of truth
+
+Before working, read:
+
+- `spec/current.md`
+- `spec/updates.md`
+- `workflow/status.md`
+- `workflow/questions.md`
+
+## Return
+
+- Result summary
+- Files changed
+- Evidence
+- Open questions
+"""
+
+
+def ensure_agent_requests(p: ProjectPaths) -> list[str]:
+    changed: list[str] = []
+    for task_path in sorted(p.tasks.glob("*.md")):
+        request_path = p.requests / task_path.name
+        if write_if_missing(request_path, render_agent_request(task_path, p.root)):
+            changed.append(str(request_path.relative_to(p.root)))
+    return changed
+
+
 def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
     p = paths(root)
     ensure_layout(p)
@@ -147,7 +183,9 @@ def init_project(root: Path, goal: str, task_titles: list[str]) -> list[str]:
             task_path.write_text(content, encoding="utf-8")
             changed.append(str(task_path.relative_to(root)))
 
-    status_message = "Pegasus is ready to delegate task specs to cloud agents."
+    changed.extend(ensure_agent_requests(p))
+
+    status_message = "Pegasus prepared task specs and cloud-agent request files."
     if p.status.exists():
         with p.status.open("a", encoding="utf-8") as fh:
             fh.write(f"\n## {now()}\n\nPegasus run continued. Existing status was preserved.\n")
@@ -194,6 +232,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     if tasks:
         for task in tasks:
             print(f"- {task.relative_to(root)}")
+    else:
+        print("- none")
+
+    requests = sorted(p.requests.glob("*.md")) if p.requests.exists() else []
+    print("\nCloud agent requests:")
+    if requests:
+        for request in requests:
+            print(f"- {request.relative_to(root)}")
     else:
         print("- none")
     if p.questions.exists():

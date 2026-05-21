@@ -18,6 +18,7 @@ class PegasusCliTests(unittest.TestCase):
             self.assertTrue((root / "spec" / "tasks" / "001-create-demo.md").exists())
             self.assertIn("running", (root / "workflow" / "status.md").read_text())
             self.assertTrue((root / "workflow" / "questions.md").exists())
+            self.assertTrue((root / "workflow" / "agent-requests" / "001-create-demo.md").exists())
 
     def test_tell_appends_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -36,6 +37,7 @@ class PegasusCliTests(unittest.TestCase):
             output = "\n".join(str(call.args[0]) for call in printed.call_args_list if call.args)
             self.assertIn("workflow/status.md", output)
             self.assertIn("spec/tasks/001-ship-feature.md", output)
+            self.assertIn("workflow/agent-requests/001-ship-feature.md", output)
 
     def test_stop_marks_project_stopped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -65,6 +67,15 @@ class PegasusCliTests(unittest.TestCase):
             self.assertIn("spec/updates.md", text)
             self.assertIn("workflow/status.md", text)
             self.assertIn("workflow/questions.md", text)
+
+    def test_agent_requests_point_to_task_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["run", tmp, "--task", "Ship feature"])
+            request = Path(tmp) / "workflow" / "agent-requests" / "001-ship-feature.md"
+            text = request.read_text()
+            self.assertIn("spec/tasks/001-ship-feature.md", text)
+            self.assertIn("spec/current.md", text)
+            self.assertIn("spec/updates.md", text)
 
 
 if __name__ == "__main__":
