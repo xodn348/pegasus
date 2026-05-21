@@ -7,7 +7,7 @@ Pegasus turns a project request into spec-driven Claude routine work.
 One-line installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
 ```
 
 If `pegasus` is not found after install, add this to your shell profile:
