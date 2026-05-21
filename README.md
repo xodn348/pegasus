@@ -4,11 +4,13 @@ Pegasus turns a project request into spec-driven Claude routine work.
 
 ## Install
 
-One-line installer:
+Recommended one-line install for agents and guarded runtimes:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
+python3 -m pip install --user "git+https://github.com/xodn348/pegasus.git"
 ```
+
+This avoids the `curl | sh` / download-then-run pattern that many automatic safety classifiers block because it executes an external GitHub script directly.
 
 If `pegasus` is not found after install, add this to your shell profile:
 
@@ -16,7 +18,7 @@ If `pegasus` is not found after install, add this to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-If your agent/runtime blocks `curl | sh`, use the same install steps manually:
+Isolated venv install:
 
 ```sh
 git clone https://github.com/xodn348/pegasus.git ~/.local/share/pegasus/src
@@ -26,10 +28,17 @@ mkdir -p ~/.local/bin
 ln -sf ~/.local/share/pegasus/venv/bin/pegasus ~/.local/bin/pegasus
 ```
 
+Optional script installer for interactive human terminals:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
+```
+
 Requirements:
 
 - Python 3.11+
-- `curl` and `tar` for the one-line installer
+- `git` for the recommended install
+- `curl` and `tar` only for the optional script installer
 - Claude CLI only if you want Claude routine verification
 
 ## Quick start
