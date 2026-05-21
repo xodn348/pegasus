@@ -13,10 +13,11 @@ Pegasus then:
 1. asks only the needed questions,
 2. writes the project spec in GitHub,
 3. splits work into smaller specs,
-4. gives those specs to Claude routine agents,
-5. checks the results,
-6. asks you only for big decisions,
-7. reports completion with evidence.
+4. attempts to start or verifies one Claude routine for the project,
+5. gives task specs to that routine,
+6. checks the results,
+7. asks you only for big decisions,
+8. reports completion with evidence.
 
 ## Commands
 
@@ -29,7 +30,7 @@ Pegasus then:
 
 The GitHub spec is the source of truth.
 
-Each project gets one Claude routine named after the project. Pegasus deletes that routine when the project is done.
+Each project gets one Claude routine named after the project. Pegasus only marks it `registered` after `claude agents --json` verifies the exact project name and repo path. If Claude cannot safely create or verify it, Pegasus keeps `pending_start` instead of pretending it is running.
 
 Agents follow the repo spec, not chat memory.
 

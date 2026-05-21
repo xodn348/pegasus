@@ -10,11 +10,12 @@ The user starts a project with `/pegasus run`. Pegasus writes a clear spec in th
 2. Pegasus asks only the questions it needs.
 3. Pegasus writes the project spec into the GitHub repo.
 4. Pegasus splits the project into smaller task specs.
-5. Claude routine agents work from those specs.
-6. The GitHub spec is the source of truth for every agent.
-7. Pegasus collects the results and verifies them.
-8. Pegasus asks the user only for big decisions or risky changes.
-9. Pegasus reports completion with evidence.
+5. Pegasus attempts to start or verifies one Claude routine named after the project.
+6. Claude routine agents work from those specs.
+7. The GitHub spec is the source of truth for every agent.
+8. Pegasus collects the results and verifies them.
+9. Pegasus asks the user only for big decisions or risky changes.
+10. Pegasus reports completion with evidence.
 
 ## Commands
 
@@ -47,12 +48,12 @@ Agents must follow the repo spec over chat history or memory.
 - Support Claude routine work.
 - One project has one Claude routine.
 - The Claude routine name is the project name.
-- Delete the Claude routine when the project is done or stopped.
+- Delete the Claude routine record only after exact absence is verified.
 - Delegate by spec, not by vague chat instructions.
 - MIT/permissive sources are allowed when provenance is clear.
 - GPL, SUL, custom, or restrictive sources require review first.
 - Do not copy old prototype code or unclear generated output.
-- Do not claim Claude routine work is running unless it is verified.
+- Do not claim Claude routine work is running unless `claude agents --json` verifies the exact project name and repo path.
 
 ## Current goal
 

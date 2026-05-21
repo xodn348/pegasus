@@ -10,6 +10,7 @@ credentials.json
 auth.json
 
 # Local agent / editor / OS state
+.omx/
 .claude/
 .DS_Store
 *.swp

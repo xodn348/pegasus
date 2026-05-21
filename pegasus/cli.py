@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from pathlib import Path
 
 TASK_RE = re.compile(r"[^a-z0-9]+")
 CLAUDE_AGENT_TIMEOUT_SECONDS = 5
+CLAUDE_CREATE_TIMEOUT_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,34 @@ class ProjectPaths:
     questions: Path
     requests: Path
     routine: Path
+
+
+@dataclass(frozen=True)
+class ClaudeListResult:
+    ok: bool
+    agents: list[dict[str, object]]
+    diagnostic: str = ""
+
+
+@dataclass(frozen=True)
+class ClaudeRoutineInspection:
+    status: str
+    agents: list[dict[str, object]]
+    diagnostic: str = ""
+
+
+@dataclass(frozen=True)
+class ClaudeCreateResult:
+    attempted: bool
+    ok: bool
+    diagnostic: str
+
+
+@dataclass(frozen=True)
+class ClaudeCleanupResult:
+    removed_record: bool
+    verified_absent: bool
+    diagnostic: str
 
 
 def now() -> str:
@@ -142,34 +172,43 @@ def routine_name(root: Path, requested: str = "") -> str:
     return requested.strip() or root.name
 
 
-def find_claude_routine(name: str, root: Path) -> dict[str, object] | None:
-    """Return a matching live Claude background agent when the local CLI can verify it.
-
-    Pegasus must not claim a Claude routine is registered unless `claude agents --json`
-    shows the exact project routine name for the exact project directory.
-    """
+def list_claude_agents(cwd: Path | None = None) -> ClaudeListResult:
+    cmd = ["claude", "agents", "--json"]
+    if cwd is not None:
+        cmd.extend(["--cwd", str(cwd)])
     try:
         proc = subprocess.run(
-            ["claude", "agents", "--json"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=CLAUDE_AGENT_TIMEOUT_SECONDS,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    except FileNotFoundError:
+        return ClaudeListResult(False, [], "Claude CLI was not found on PATH.")
+    except subprocess.TimeoutExpired:
+        return ClaudeListResult(False, [], "Timed out while listing Claude routines.")
+    except OSError as exc:
+        return ClaudeListResult(False, [], f"Could not list Claude routines: {exc}")
     if proc.returncode != 0:
-        return None
+        stderr = proc.stderr.strip()[:300]
+        return ClaudeListResult(False, [], f"`claude agents --json` exited {proc.returncode}: {stderr}")
     try:
-        agents = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return None
+        agents = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        return ClaudeListResult(False, [], f"Could not parse `claude agents --json`: {exc}")
     if not isinstance(agents, list):
-        return None
+        return ClaudeListResult(False, [], "`claude agents --json` did not return a list.")
+    return ClaudeListResult(True, [a for a in agents if isinstance(a, dict)])
+
+
+def matching_claude_routines(name: str, root: Path) -> ClaudeListResult:
+    result = list_claude_agents(root)
+    if not result.ok:
+        return result
     resolved_root = root.resolve()
-    for agent in agents:
-        if not isinstance(agent, dict):
-            continue
+    matches: list[dict[str, object]] = []
+    for agent in result.agents:
         if agent.get("name") != name:
             continue
         cwd = agent.get("cwd")
@@ -177,19 +216,134 @@ def find_claude_routine(name: str, root: Path) -> dict[str, object] | None:
             continue
         try:
             if Path(cwd).expanduser().resolve() == resolved_root:
-                return agent
+                matches.append(agent)
         except OSError:
             continue
-    return None
+    return ClaudeListResult(True, matches)
 
 
-def render_claude_routine(name: str, root: Path, agent: dict[str, object] | None = None) -> str:
-    if agent:
-        status = "registered"
-        verification = f"Verified by `claude agents --json` at {now()}.\nSession: {agent.get('sessionId', 'unknown')}\nPID: {agent.get('pid', 'unknown')}"
+def inspect_claude_routine(name: str, root: Path) -> ClaudeRoutineInspection:
+    matches = matching_claude_routines(name, root)
+    if not matches.ok:
+        return ClaudeRoutineInspection("pending_start", [], matches.diagnostic)
+    if len(matches.agents) == 0:
+        return ClaudeRoutineInspection("absent", [])
+    if len(matches.agents) == 1:
+        return ClaudeRoutineInspection("registered", matches.agents)
+    return ClaudeRoutineInspection("conflict", matches.agents, f"Found {len(matches.agents)} exact Claude routines for this project.")
+
+
+def routine_prompt(name: str, root: Path) -> str:
+    return f"""You are the Claude routine for Pegasus project `{name}`.
+
+Project root: {root}
+
+Read the GitHub repo files as the source of truth before doing work:
+- spec/current.md
+- spec/updates.md
+- workflow/status.md
+- workflow/questions.md
+- spec/tasks/*.md
+- workflow/agent-requests/*.md
+
+Do not rely on chat memory over repo files. Report files changed, evidence, and open questions.
+"""
+
+
+def discover_claude_create_surface() -> ClaudeCreateResult:
+    try:
+        proc = subprocess.run(
+            ["claude", "agents", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=CLAUDE_AGENT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ClaudeCreateResult(True, False, "Claude CLI was not found on PATH.")
+    except subprocess.TimeoutExpired:
+        return ClaudeCreateResult(True, False, "Timed out while checking Claude agents help.")
+    except OSError as exc:
+        return ClaudeCreateResult(True, False, f"Could not inspect Claude agents help: {exc}")
+    if proc.returncode != 0:
+        return ClaudeCreateResult(True, False, f"`claude agents --help` exited {proc.returncode}.")
+    help_lines = [line.strip().lower() for line in proc.stdout.splitlines()]
+    has_noninteractive_create = any(re.match(r"^(create|dispatch|start)\b", line) for line in help_lines)
+    if not has_noninteractive_create:
+        return ClaudeCreateResult(
+            True,
+            False,
+            "No verified noninteractive Claude routine create command is exposed by `claude agents --help`; kept pending_start.",
+        )
+    return ClaudeCreateResult(
+        True,
+        False,
+        "Claude agents help mentions creation-like wording, but Pegasus has no verified safe command contract yet; kept pending_start.",
+    )
+
+
+def create_claude_routine(name: str, root: Path) -> ClaudeCreateResult:
+    # The current installed Claude CLI exposes reliable listing (`claude agents --json`) but
+    # no verified noninteractive create/delete subcommand. Keep this as a narrow adapter
+    # boundary so a future discovered command can be added without weakening verification.
+    env_template = os.environ.get("PEGASUS_CLAUDE_ROUTINE_CREATE", "").strip()
+    if not env_template:
+        return discover_claude_create_surface()
+
+    command = env_template.format(name=name, root=str(root), prompt=routine_prompt(name, root))
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return ClaudeCreateResult(True, False, f"Configured Claude routine create command could not be parsed: {exc}")
+    if not argv:
+        return ClaudeCreateResult(True, False, "Configured Claude routine create command was empty.")
+    try:
+        proc = subprocess.run(
+            argv,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=CLAUDE_CREATE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return ClaudeCreateResult(True, False, "Configured Claude routine create command timed out.")
+    except OSError as exc:
+        return ClaudeCreateResult(True, False, f"Configured Claude routine create command failed: {exc}")
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()[:300]
+        return ClaudeCreateResult(True, False, f"Configured Claude routine create command exited {proc.returncode}: {stderr}")
+    return ClaudeCreateResult(True, True, "Configured Claude routine create command completed; awaiting post-create verification.")
+
+
+def render_claude_routine(
+    name: str,
+    root: Path,
+    inspection: ClaudeRoutineInspection | None = None,
+    create_result: ClaudeCreateResult | None = None,
+    cleanup_diagnostic: str = "",
+) -> str:
+    inspection = inspection or inspect_claude_routine(name, root)
+    status = inspection.status if inspection.status != "absent" else "pending_start"
+    diagnostics: list[str] = []
+    if inspection.status == "registered":
+        agent = inspection.agents[0]
+        diagnostics.append(f"Verified by `claude agents --json` at {now()}.")
+        diagnostics.append(f"Session: {agent.get('sessionId', 'unknown')}")
+        diagnostics.append(f"PID: {agent.get('pid', 'unknown')}")
+    elif inspection.status == "conflict":
+        diagnostics.append(inspection.diagnostic or "Multiple exact Claude routines match this project.")
+        diagnostics.append("Pegasus will not choose or delete a routine until the conflict is resolved.")
     else:
-        status = "pending_start"
-        verification = "Not verified yet. Start the command below, then run `/pegasus run` again to verify it."
+        diagnostics.append("Not verified yet. Pegasus attempted safe discovery/creation and will only report `registered` after exact verification.")
+        if inspection.diagnostic:
+            diagnostics.append(inspection.diagnostic)
+    if create_result is not None:
+        diagnostics.append(f"Create attempt: {create_result.diagnostic}")
+    if cleanup_diagnostic:
+        diagnostics.append(f"Cleanup: {cleanup_diagnostic}")
+
+    diagnostic_text = "\n".join(diagnostics)
     return f"""# Claude routine
 
 Name: {name}
@@ -198,33 +352,48 @@ Status: {status}
 
 Pegasus uses one Claude routine per project.
 The routine name must be the project name.
-When the project is done or stopped, Pegasus deletes this routine record.
+When the project is done or stopped, Pegasus deletes this routine record only after exact absence is verified.
 Pegasus only reports `registered` after the local Claude CLI verifies the live routine.
 
-{verification}
+{diagnostic_text}
 
-Start command:
+Routine prompt:
 
 ```text
-claude --name {name} --add-dir {root} --permission-mode auto
+{routine_prompt(name, root).strip()}
 ```
 """
 
 
+def write_routine_record(
+    p: ProjectPaths,
+    name: str,
+    inspection: ClaudeRoutineInspection | None = None,
+    create_result: ClaudeCreateResult | None = None,
+    cleanup_diagnostic: str = "",
+) -> bool:
+    rendered = render_claude_routine(name, p.root, inspection, create_result, cleanup_diagnostic)
+    if p.routine.exists() and read_text_lossy(p.routine) == rendered:
+        return False
+    p.routine.write_text(rendered, encoding="utf-8")
+    return True
+
+
 def ensure_one_claude_routine(p: ProjectPaths, name: str) -> list[str]:
-    agent = find_claude_routine(name, p.root)
-    rendered = render_claude_routine(name, p.root, agent)
     if p.routine.exists():
         text = read_text_lossy(p.routine)
         expected = f"Name: {name}"
         if expected not in text:
             raise SystemExit(f"Existing Claude routine belongs to a different project. Expected {expected} in {p.routine}")
-        if agent and "Status: registered" not in text:
-            p.routine.write_text(rendered, encoding="utf-8")
-            return [str(p.routine.relative_to(p.root))]
-        return []
-    p.routine.write_text(rendered, encoding="utf-8")
-    return [str(p.routine.relative_to(p.root))]
+
+    inspection = inspect_claude_routine(name, p.root)
+    create_result: ClaudeCreateResult | None = None
+    if inspection.status == "absent":
+        create_result = create_claude_routine(name, p.root)
+        inspection = inspect_claude_routine(name, p.root)
+
+    changed = write_routine_record(p, name, inspection, create_result)
+    return [str(p.routine.relative_to(p.root))] if changed else []
 
 
 def routine_name_from_record(text: str) -> str:
@@ -234,13 +403,10 @@ def routine_name_from_record(text: str) -> str:
     return ""
 
 
-def stop_verified_claude_routine(name: str, root: Path) -> bool:
-    if not name:
+def terminate_verified_claude_routine(inspection: ClaudeRoutineInspection) -> bool:
+    if inspection.status != "registered":
         return False
-    agent = find_claude_routine(name, root)
-    if not agent:
-        return False
-    pid = agent.get("pid")
+    pid = inspection.agents[0].get("pid")
     if not isinstance(pid, int) or pid <= 0:
         return False
     try:
@@ -250,13 +416,31 @@ def stop_verified_claude_routine(name: str, root: Path) -> bool:
     return True
 
 
-def cleanup_claude_routine(p: ProjectPaths) -> bool:
+def cleanup_claude_routine(p: ProjectPaths) -> ClaudeCleanupResult:
     if not p.routine.exists():
-        return False
+        return ClaudeCleanupResult(False, True, "No Claude routine record exists.")
+
     name = routine_name_from_record(read_text_lossy(p.routine))
-    stop_verified_claude_routine(name, p.root)
-    p.routine.unlink()
-    return True
+    if not name:
+        return ClaudeCleanupResult(False, False, "Claude routine record has no Name field; kept record.")
+
+    before = inspect_claude_routine(name, p.root)
+    if before.status == "conflict":
+        write_routine_record(p, name, before, cleanup_diagnostic="Cleanup blocked by duplicate exact Claude routines.")
+        return ClaudeCleanupResult(False, False, "Cleanup blocked by duplicate exact Claude routines.")
+    if before.status == "pending_start":
+        write_routine_record(p, name, before, cleanup_diagnostic="Could not verify absence because Claude routine listing failed.")
+        return ClaudeCleanupResult(False, False, "Could not verify absence because Claude routine listing failed.")
+    if before.status == "registered":
+        terminate_verified_claude_routine(before)
+
+    after = inspect_claude_routine(name, p.root)
+    if after.status == "absent":
+        p.routine.unlink()
+        return ClaudeCleanupResult(True, True, "Verified exact absence after cleanup.")
+
+    write_routine_record(p, name, after, cleanup_diagnostic="Routine still present or unverified after cleanup; kept record.")
+    return ClaudeCleanupResult(False, False, "Routine still present or unverified after cleanup; kept record.")
 
 
 def render_agent_request(task_path: Path, root: Path) -> str:
@@ -362,8 +546,19 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"Status file: {p.status.relative_to(root)}")
     status_text = read_text_lossy(p.status).strip()
     print(status_text)
-    if "Phase: done" in status_text and cleanup_claude_routine(p):
-        print("\nDeleted Claude routine after completion.")
+    if "Phase: done" in status_text:
+        cleanup = cleanup_claude_routine(p)
+        if cleanup.removed_record:
+            print("\nDeleted Claude routine after verified completion cleanup.")
+        elif cleanup.verified_absent:
+            print("\nClaude routine already absent.")
+        else:
+            print(f"\nClaude routine cleanup incomplete: {cleanup.diagnostic}")
+    elif p.routine.exists():
+        name = routine_name_from_record(read_text_lossy(p.routine))
+        if name:
+            write_routine_record(p, name, inspect_claude_routine(name, p.root))
+
     tasks = sorted(p.tasks.glob("*.md")) if p.tasks.exists() else []
     print("\nTask specs:")
     if tasks:
@@ -379,6 +574,14 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"- {request.relative_to(root)}")
     else:
         print("- none")
+
+    if p.routine.exists():
+        print("\nClaude routine:")
+        text = read_text_lossy(p.routine)
+        for line in text.splitlines():
+            if line.startswith(("Name:", "Project:", "Status:")):
+                print(line)
+
     if p.questions.exists():
         print("\nQuestions:")
         print(read_text_lossy(p.questions).strip())
@@ -389,14 +592,22 @@ def cmd_stop(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     p = paths(root)
     ensure_layout(p)
-    removed = cleanup_claude_routine(p)
+    cleanup = cleanup_claude_routine(p)
     message = "Pegasus was stopped by user request."
-    if removed:
-        message += " Claude routine record was deleted."
+    if cleanup.removed_record:
+        message += " Claude routine record was deleted after exact absence was verified."
+    elif cleanup.verified_absent:
+        message += " No Claude routine record was present."
+    else:
+        message += f" Claude routine cleanup incomplete: {cleanup.diagnostic}"
     p.status.write_text(render_status("stopped", message), encoding="utf-8")
     print(f"Stopped Pegasus project at {root}")
-    if removed:
-        print("Deleted Claude routine record.")
+    if cleanup.removed_record:
+        print("Deleted Claude routine record after verified absence.")
+    elif cleanup.verified_absent:
+        print("No Claude routine record was present.")
+    else:
+        print(f"Claude routine cleanup incomplete: {cleanup.diagnostic}")
     return 0
 
 
