@@ -1,6 +1,6 @@
 ---
 name: pegasus
-description: Pegasus project leader. Use when the user says /pegasus or pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
+description: Pegasus project leader. Use when the user says $pegasus or /pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
 ---
 
 # Pegasus skill
@@ -23,26 +23,26 @@ Agents follow repo files over chat memory.
 
 ## How to handle user commands
 
-When the user says `/pegasus run`, `pegasus run`, or asks to start Pegasus:
+When the user says `$pegasus run`, `/pegasus run`, or asks to start Pegasus through the Pegasus skill:
 
 ```bash
 pegasus run . --goal "<user goal>"
 pegasus status .
 ```
 
-When the user says `/pegasus tell ...`:
+When the user says `$pegasus tell ...` or `/pegasus tell ...`:
 
 ```bash
 pegasus tell . "<user instruction>"
 ```
 
-When the user says `/pegasus status`:
+When the user says `$pegasus status` or `/pegasus status`:
 
 ```bash
 pegasus status .
 ```
 
-When the user says `/pegasus stop`:
+When the user says `$pegasus stop` or `/pegasus stop`:
 
 ```bash
 pegasus stop .

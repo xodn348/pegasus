@@ -64,7 +64,13 @@ After install, both agent apps can use Pegasus from a repo:
 Codex:
 
 ```text
-pegasus run . --goal "Ship the next feature"
+$pegasus run . --goal "Ship the next feature"
+```
+
+You can also use:
+
+```text
+/pegasus run . --goal "Ship the next feature"
 ```
 
 Claude Code:

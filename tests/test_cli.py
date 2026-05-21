@@ -58,7 +58,7 @@ class PegasusCliTests(unittest.TestCase):
             self.assertTrue(skill.exists())
             self.assertTrue(command.exists())
             self.assertIn("name: pegasus", skill.read_text())
-            self.assertIn("pegasus run .", skill.read_text())
+            self.assertIn("$pegasus run", skill.read_text())
             self.assertIn("# /pegasus", command.read_text())
             self.assertIn("allowed-tools", command.read_text())
 
