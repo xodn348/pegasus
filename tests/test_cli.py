@@ -42,6 +42,16 @@ class PegasusCliTests(unittest.TestCase):
 
 
 
+
+    def test_deep_digger_agent_is_documented(self) -> None:
+        agent = Path("agents/project-agents/deep-digger.md")
+        self.assertTrue(agent.exists())
+        text = agent.read_text()
+        self.assertIn("Do not keep broadening the option space", text)
+        self.assertIn("Terminal state: Decision | Contradiction | Experiment | Question", text)
+        self.assertIn("deep-digger.md", Path("agents/project-agents/README.md").read_text())
+        self.assertIn("deep-digger.md", Path("agents/runner/pegasus-runner.md").read_text())
+
     def test_install_integrations_writes_codex_skill_and_claude_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

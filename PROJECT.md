@@ -50,6 +50,7 @@ Agents must follow the repo spec over chat history or memory.
 - The Claude routine name is the project name.
 - Delete the Claude routine record only after exact absence is verified.
 - Delegate by spec, not by vague chat instructions.
+- Use the deep-digger agent when an LLM discussion expands sideways and one thread must be followed to a decision, contradiction, experiment, or blocking question.
 - MIT/permissive sources are allowed when provenance is clear.
 - GPL, SUL, custom, or restrictive sources require review first.
 - Do not copy old prototype code or unclear generated output.

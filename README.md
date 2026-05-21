@@ -84,8 +84,13 @@ Claude Code:
 1. Writes the project spec in the repo.
 2. Splits work into smaller task specs.
 3. Writes Claude routine request files for those task specs.
-4. Attempts to start or verifies one Claude routine for the project.
-5. Reports progress from repo files.
+4. Uses a deep-digger agent when LLM discussion needs one thread followed to ground.
+5. Attempts to start or verifies one Claude routine for the project.
+6. Reports progress from repo files.
+
+## Deep digger agent
+
+`agents/project-agents/deep-digger.md` is for discussions that keep expanding sideways. It picks one unresolved thread and digs until it reaches a decision, contradiction, next experiment, or one blocking question.
 
 ## Commands
 
