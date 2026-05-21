@@ -9,7 +9,7 @@
 credentials.json
 auth.json
 
-# Local Claude / editor / OS state
+# Local agent / editor / OS state
 .claude/
 .DS_Store
 *.swp

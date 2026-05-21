@@ -1,86 +1,32 @@
 # Pegasus
 
-Pegasus is a clean standalone Claude Code project-leader scaffold.
+Pegasus turns a project request into spec-driven cloud agent work.
 
-It is designed for one workflow: start a project, clarify intent once, persist a
-spec and state in a project repo, hand off to a repeatable driver routine, and
-let the driver continue from repository state while asking the user only for real
-decision boundaries or completion.
-
-## Status
-
-Clean rewrite scaffold. This repo is the canonical home for Pegasus going
-forward. The intended workflow is documented, but live Claude Code routine
-registration and executable `/pegasus` tests are still the next implementation
-slice.
-
-## What changed in the clean rewrite
-
-- No subtree merge from `pegasus-os`.
-- No wholesale copy of prior adapted bus/SOP/reflector files.
-- The old prototype is treated as requirements history only.
-- Attribution is centralized in [`NOTICE.md`](./NOTICE.md).
-- The repo contains a small, reviewable control surface instead of a personal OS
-  dump.
-
-## Target workflow
+You run:
 
 ```text
-/pegasus start <name>
-  → interview or validate spec/current.md
-  → initialize spec/addenda.md + workflow/state.json + workflow/events.ndjson
-  → arm a verified driver routine, or print the manual command if unavailable
-  → driver reloads repo state every run
-  → driver picks bounded work, optionally fans out workers, verifies, grades
-  → driver persists state/events and escalates only at decision boundaries
-  → /pegasus tell/status/stop interact through the repo state
+/pegasus run
 ```
 
-Laptop-off/background operation is a goal only after the current Claude Code
-routine surface is verified. Silent fake arming is forbidden.
+Pegasus then:
 
-## Layout
-
-```text
-pegasus/
-├── PROJECT.md                         # engineering source of truth
-├── NOTICE.md                          # provenance and attribution policy
-├── docs/architecture.md               # runtime architecture
-├── schemas/project-event.schema.json  # project lifecycle event envelope
-├── skills/pegasus/SKILL.md            # /pegasus start|tell|status|stop
-├── claude/routines/pegasus-driver.md  # repeatable driver prompt
-├── claude/project-workers/            # small optional worker role prompts
-└── examples/project/                  # minimal project-state example
-```
+1. asks only the needed questions,
+2. writes the project spec in GitHub,
+3. splits work into smaller specs,
+4. gives those specs to cloud agents,
+5. checks the results,
+6. asks you only for big decisions,
+7. reports completion with evidence.
 
 ## Commands
 
-Pegasus exposes one skill with four verbs:
+- `/pegasus run` — start or continue
+- `/pegasus tell` — add instructions
+- `/pegasus status` — check progress
+- `/pegasus stop` — stop
 
-```text
-/pegasus start <repo-or-slug>
-/pegasus tell <repo-or-slug> "..."
-/pegasus status <repo-or-slug>
-/pegasus stop <repo-or-slug>
-```
+## Core rule
 
-## Safety boundaries
+The GitHub spec is the source of truth.
 
-Pegasus never does these without explicit user approval:
-
-- force-push;
-- delete a repository;
-- rewrite Git history;
-- change dependency versions;
-- modify CI or deployment settings;
-- mark a project done without fresh verification evidence;
-- pretend a background routine is armed when the runtime did not confirm it.
-
-## Next implementation slice
-
-1. Install the skill into the target Claude Code skills path.
-2. Add a dry-run harness for `/pegasus start|tell|status|stop` against
-   `examples/project/`.
-3. Wire routine registration only after the current Claude Code runtime surface is
-   verified.
-4. Add fixture tests for state/event parsing and driver phase transitions.
+Agents follow the repo spec, not chat memory.

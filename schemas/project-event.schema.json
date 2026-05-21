@@ -1,43 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://xodn348.github.io/pegasus/schemas/project-event.schema.json",
   "title": "Pegasus project event",
   "type": "object",
-  "required": ["ts", "kind", "repo"],
+  "required": ["time", "kind", "message"],
   "properties": {
-    "ts": { "type": "string", "format": "date-time" },
+    "time": { "type": "string" },
     "kind": {
       "type": "string",
       "enum": [
         "project_started",
-        "routine_armed",
-        "routine_unavailable",
-        "tick_started",
-        "addenda_folded",
-        "lane_started",
-        "worker_invoked",
-        "worker_returned",
-        "lane_verified",
-        "milestone_graded",
-        "user_tell",
-        "question_raised",
-        "question_resolved",
-        "escalation",
-        "notification_sent",
-        "notification_unavailable",
-        "project_stopped",
+        "spec_written",
+        "task_created",
+        "task_delegated",
+        "agent_result",
+        "status_updated",
+        "question_added",
         "project_done",
-        "tick_skipped"
+        "project_stopped"
       ]
     },
-    "repo": { "type": "string" },
-    "lane": { "type": "string" },
-    "milestone": { "type": "string" },
-    "worker": { "type": "string" },
-    "outcome": { "type": "string" },
-    "reason": { "type": "string" },
-    "routine_id": { "type": "string" },
-    "question_id": { "type": "string" },
+    "message": { "type": "string" },
     "evidence": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true

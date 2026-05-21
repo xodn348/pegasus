@@ -1,3 +1,3 @@
-# Pending questions
+# Questions
 
 None.

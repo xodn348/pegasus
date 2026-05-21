@@ -1,8 +1,11 @@
-# Example Pegasus spec
+# Example project spec
 
 ## Goal
-Demonstrate the minimum project layout Pegasus expects.
 
-## Acceptance
-- `workflow/state.json` is valid JSON.
-- `workflow/events.ndjson` contains project lifecycle events.
+Show the smallest Pegasus project layout.
+
+## Done when
+
+- `spec/current.md` explains the goal.
+- `spec/tasks/` contains task specs for agents.
+- `workflow/status.md` shows current progress.
