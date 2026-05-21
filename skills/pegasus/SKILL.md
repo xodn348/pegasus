@@ -1,35 +1,51 @@
 ---
 name: pegasus
-description: Pegasus project leader. Use for /pegasus run|tell|status|stop with a GitHub repo spec as the source of truth.
+description: Pegasus project leader. Use when the user says /pegasus or pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
 ---
 
 # Pegasus skill
 
+Pegasus is a repo-local project leader.
+
 ## Rule
 
-The GitHub repo spec is the source of truth.
-Each project gets one Claude routine named after the project. Delete it when the project is done or stopped.
+The repo spec is the source of truth:
 
-## `/pegasus run <repo-or-idea>`
+- `spec/current.md`
+- `spec/tasks/*.md`
+- `spec/updates.md`
+- `workflow/status.md`
+- `workflow/questions.md`
+- `workflow/agent-requests/*.md`
+- `workflow/claude-routine.md`
 
-Start or continue a project.
+Agents follow repo files over chat memory.
 
-1. Find or create the GitHub repo.
-2. Ask only the questions needed to write `spec/current.md`.
-3. Write or update the repo spec.
-4. Split work into `spec/tasks/*.md`.
-5. Delegate task specs to Claude routine agents.
-6. Review results and update `workflow/status.md`.
-7. Ask the user only for big decisions or risky changes.
+## How to handle user commands
 
-## `/pegasus tell <repo> "..."`
+When the user says `/pegasus run`, `pegasus run`, or asks to start Pegasus:
 
-Append the user's new instruction to `spec/updates.md`.
+```bash
+pegasus run . --goal "<user goal>"
+pegasus status .
+```
 
-## `/pegasus status <repo>`
+When the user says `/pegasus tell ...`:
 
-Read the repo spec and `workflow/status.md`, then report progress simply.
+```bash
+pegasus tell . "<user instruction>"
+```
 
-## `/pegasus stop <repo>`
+When the user says `/pegasus status`:
 
-Mark the project stopped in `workflow/status.md` and delete the Claude routine. Do not delete repo data.
+```bash
+pegasus status .
+```
+
+When the user says `/pegasus stop`:
+
+```bash
+pegasus stop .
+```
+
+Ask only if the target repo or goal is missing. Prefer the current working directory as the repo.

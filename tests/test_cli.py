@@ -41,6 +41,42 @@ class PegasusCliTests(unittest.TestCase):
             self.assertIn("workflow/agent-requests/001-ship-feature.md", output)
 
 
+
+    def test_install_integrations_writes_codex_skill_and_claude_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code = main([
+                "install-integrations",
+                "--codex-home",
+                str(root / "codex"),
+                "--claude-home",
+                str(root / "claude"),
+            ])
+            self.assertEqual(code, 0)
+            skill = root / "codex" / "skills" / "pegasus" / "SKILL.md"
+            command = root / "claude" / "commands" / "pegasus.md"
+            self.assertTrue(skill.exists())
+            self.assertTrue(command.exists())
+            self.assertIn("name: pegasus", skill.read_text())
+            self.assertIn("pegasus run .", skill.read_text())
+            self.assertIn("# /pegasus", command.read_text())
+            self.assertIn("allowed-tools", command.read_text())
+
+    def test_install_integrations_can_skip_one_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code = main([
+                "install-integrations",
+                "--codex-home",
+                str(root / "codex"),
+                "--claude-home",
+                str(root / "claude"),
+                "--skip-claude",
+            ])
+            self.assertEqual(code, 0)
+            self.assertTrue((root / "codex" / "skills" / "pegasus" / "SKILL.md").exists())
+            self.assertFalse((root / "claude" / "commands" / "pegasus.md").exists())
+
     def test_stop_without_routine_record_is_not_reported_incomplete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             code = main(["stop", tmp])

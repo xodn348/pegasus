@@ -7,10 +7,16 @@ Pegasus turns a project request into spec-driven Claude routine work.
 Recommended one-line install for agents and guarded runtimes:
 
 ```sh
-python3 -m pip install --user "git+https://github.com/xodn348/pegasus.git"
+python3 -m pip install --user --upgrade "git+https://github.com/xodn348/pegasus.git" && python3 -m pegasus install-integrations
 ```
 
-This avoids the `curl | sh` / download-then-run pattern that many automatic safety classifiers block because it executes an external GitHub script directly.
+This installs:
+
+- `pegasus` CLI
+- Codex skill: `~/.codex/skills/pegasus/SKILL.md`
+- Claude Code slash command: `~/.claude/commands/pegasus.md`
+
+It avoids the `curl | sh` / download-then-run pattern that many automatic safety classifiers block because it executes an external GitHub script directly.
 
 If `pegasus` is not found after install, add this to your shell profile:
 
@@ -26,9 +32,10 @@ python3 -m venv ~/.local/share/pegasus/venv
 ~/.local/share/pegasus/venv/bin/python -m pip install --upgrade ~/.local/share/pegasus/src
 mkdir -p ~/.local/bin
 ln -sf ~/.local/share/pegasus/venv/bin/pegasus ~/.local/bin/pegasus
+~/.local/bin/pegasus install-integrations
 ```
 
-Optional script installer for interactive human terminals:
+Optional script installer for interactive human terminals. This also installs the Codex skill and Claude Code command:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/xodn348/pegasus/refs/heads/main/scripts/install.sh | sh
@@ -38,6 +45,7 @@ Requirements:
 
 - Python 3.11+
 - `git` for the recommended install
+- Codex and/or Claude Code if you want the `/pegasus` agent command surfaces
 - `curl` and `tar` only for the optional script installer
 - Claude CLI only if you want Claude routine verification
 
@@ -61,6 +69,22 @@ Stop the project:
 
 ```sh
 pegasus stop .
+```
+
+## Agent commands
+
+After `pegasus install-integrations`, both agent apps can use Pegasus from a repo:
+
+Codex:
+
+```text
+pegasus run . --goal "Ship the next feature"
+```
+
+Claude Code:
+
+```text
+/pegasus run . --goal "Ship the next feature"
 ```
 
 ## What Pegasus does

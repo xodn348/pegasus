@@ -16,6 +16,101 @@ CLAUDE_AGENT_TIMEOUT_SECONDS = 5
 CLAUDE_CREATE_TIMEOUT_SECONDS = 15
 
 
+
+CODEX_SKILL = """---
+name: pegasus
+description: Pegasus project leader. Use when the user says /pegasus or pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
+---
+
+# Pegasus skill
+
+Pegasus is a repo-local project leader.
+
+## Rule
+
+The repo spec is the source of truth:
+
+- `spec/current.md`
+- `spec/tasks/*.md`
+- `spec/updates.md`
+- `workflow/status.md`
+- `workflow/questions.md`
+- `workflow/agent-requests/*.md`
+- `workflow/claude-routine.md`
+
+Agents follow repo files over chat memory.
+
+## How to handle user commands
+
+When the user says `/pegasus run`, `pegasus run`, or asks to start Pegasus:
+
+```bash
+pegasus run . --goal "<user goal>"
+pegasus status .
+```
+
+When the user says `/pegasus tell ...`:
+
+```bash
+pegasus tell . "<user instruction>"
+```
+
+When the user says `/pegasus status`:
+
+```bash
+pegasus status .
+```
+
+When the user says `/pegasus stop`:
+
+```bash
+pegasus stop .
+```
+
+Ask only if the target repo or goal is missing. Prefer the current working directory as the repo.
+"""
+
+CLAUDE_COMMAND = """---
+description: Run Pegasus project leadership in the current repo.
+argument-hint: "run|tell|status|stop [args]"
+allowed-tools: Bash(pegasus:*), Bash(python3 -m pegasus:*)
+---
+
+# /pegasus
+
+Pegasus is a repo-local project leader. It writes project specs and workflow files into the current GitHub repo.
+
+Argument: `$ARGUMENTS`
+
+## Rules
+
+- Use the current working directory as the repo unless the user gives another path.
+- The repo spec is the source of truth: `spec/current.md`, `spec/tasks/*.md`, `spec/updates.md`, and `workflow/*.md`.
+- Do not claim Claude routine work is running unless Pegasus reports `registered`.
+
+## Execute
+
+If `$ARGUMENTS` starts with `run`, `tell`, `status`, or `stop`, run:
+
+```bash
+pegasus $ARGUMENTS
+```
+
+If `$ARGUMENTS` is empty, run:
+
+```bash
+pegasus status .
+```
+
+If `$ARGUMENTS` is a plain project goal, run:
+
+```bash
+pegasus run . --goal "$ARGUMENTS"
+```
+
+Then summarize the result briefly and point to the changed `spec/` and `workflow/` files.
+"""
+
 @dataclass(frozen=True)
 class ProjectPaths:
     root: Path
@@ -513,6 +608,39 @@ def init_project(root: Path, goal: str, task_titles: list[str], project_name: st
     return changed
 
 
+
+def install_integrations(codex_home: Path, claude_home: Path, install_codex: bool = True, install_claude: bool = True) -> list[Path]:
+    written: list[Path] = []
+    if install_codex:
+        skill_dir = codex_home.expanduser() / "skills" / "pegasus"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        skill_path.write_text(CODEX_SKILL, encoding="utf-8")
+        written.append(skill_path)
+    if install_claude:
+        command_dir = claude_home.expanduser() / "commands"
+        command_dir.mkdir(parents=True, exist_ok=True)
+        command_path = command_dir / "pegasus.md"
+        command_path.write_text(CLAUDE_COMMAND, encoding="utf-8")
+        written.append(command_path)
+    return written
+
+
+def cmd_install_integrations(args: argparse.Namespace) -> int:
+    codex_home = Path(args.codex_home or os.environ.get("CODEX_HOME", "~/.codex"))
+    claude_home = Path(args.claude_home or os.environ.get("CLAUDE_HOME", "~/.claude"))
+    written = install_integrations(codex_home, claude_home, not args.skip_codex, not args.skip_claude)
+    if not written:
+        print("No Pegasus integrations were installed.")
+        return 0
+    print("Pegasus integrations installed:")
+    for path in written:
+        print(f"- {path.expanduser()}")
+    print("\nCodex: use the Pegasus skill by saying `pegasus run` or `/pegasus run`.")
+    print("Claude Code: use `/pegasus run . --goal \"...\"` inside a repo.")
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     goal = args.goal or "Define this project from the user's request."
@@ -634,6 +762,13 @@ def build_parser() -> argparse.ArgumentParser:
     stop = sub.add_parser("stop", help="stop a project")
     stop.add_argument("repo", help="project repo path")
     stop.set_defaults(func=cmd_stop)
+
+    integrations = sub.add_parser("install-integrations", help="install Codex skill and Claude Code slash command")
+    integrations.add_argument("--codex-home", default="", help="Codex home; defaults to CODEX_HOME or ~/.codex")
+    integrations.add_argument("--claude-home", default="", help="Claude home; defaults to CLAUDE_HOME or ~/.claude")
+    integrations.add_argument("--skip-codex", action="store_true", help="do not install the Codex skill")
+    integrations.add_argument("--skip-claude", action="store_true", help="do not install the Claude Code command")
+    integrations.set_defaults(func=cmd_install_integrations)
     return parser
 
 

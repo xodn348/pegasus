@@ -54,6 +54,10 @@ VENV_DIR="$INSTALL_DIR/venv"
 "$VENV_DIR/bin/python" -m pip install --upgrade "$SOURCE_DIR"
 ln -sf "$VENV_DIR/bin/pegasus" "$BIN_DIR/pegasus"
 
+if [ "${PEGASUS_INSTALL_INTEGRATIONS:-1}" != "0" ]; then
+  "$BIN_DIR/pegasus" install-integrations
+fi
+
 cat <<EOF
 Pegasus installed.
 
