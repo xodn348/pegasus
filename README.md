@@ -16,6 +16,16 @@ If `pegasus` is not found after install, add this to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+If your agent/runtime blocks `curl | sh`, use the same install steps manually:
+
+```sh
+git clone https://github.com/xodn348/pegasus.git ~/.local/share/pegasus/src
+python3 -m venv ~/.local/share/pegasus/venv
+~/.local/share/pegasus/venv/bin/python -m pip install --upgrade ~/.local/share/pegasus/src
+mkdir -p ~/.local/bin
+ln -sf ~/.local/share/pegasus/venv/bin/pegasus ~/.local/bin/pegasus
+```
+
 Requirements:
 
 - Python 3.11+
