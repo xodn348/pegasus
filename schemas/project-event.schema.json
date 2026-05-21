@@ -10,21 +10,34 @@
       "type": "string",
       "enum": [
         "project_started",
+        "routine_armed",
+        "routine_unavailable",
         "tick_started",
+        "addenda_folded",
         "lane_started",
+        "worker_invoked",
+        "worker_returned",
         "lane_verified",
+        "milestone_graded",
         "user_tell",
         "question_raised",
         "question_resolved",
         "escalation",
+        "notification_sent",
+        "notification_unavailable",
         "project_stopped",
-        "project_done"
+        "project_done",
+        "tick_skipped"
       ]
     },
     "repo": { "type": "string" },
     "lane": { "type": "string" },
+    "milestone": { "type": "string" },
+    "worker": { "type": "string" },
     "outcome": { "type": "string" },
     "reason": { "type": "string" },
+    "routine_id": { "type": "string" },
+    "question_id": { "type": "string" },
     "evidence": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true
