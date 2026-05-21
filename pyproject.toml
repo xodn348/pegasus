@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pegasus"
 version = "0.1.0"
-description = "Spec-driven project leader for cloud agent work"
+description = "Spec-driven project leader for Claude routine work"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

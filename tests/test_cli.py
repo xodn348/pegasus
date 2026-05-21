@@ -96,6 +96,16 @@ class PegasusCliTests(unittest.TestCase):
             main(["stop", tmp])
             self.assertFalse((root / "workflow" / "claude-routine.md").exists())
 
+    def test_stop_terminates_verified_live_claude_routine(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["run", tmp, "--name", "demo-project"])
+            agent = {"name": "demo-project", "cwd": tmp, "sessionId": "session-1", "pid": 12345}
+            with patch("pegasus.cli.find_claude_routine", return_value=agent), patch("pegasus.cli.os.kill") as kill:
+                main(["stop", tmp])
+            kill.assert_called_once()
+            self.assertFalse((root / "workflow" / "claude-routine.md").exists())
+
     def test_status_deletes_claude_routine_when_done(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -103,6 +113,33 @@ class PegasusCliTests(unittest.TestCase):
             (root / "workflow" / "status.md").write_text("# Status\n\nPhase: done\n")
             main(["status", tmp])
             self.assertFalse((root / "workflow" / "claude-routine.md").exists())
+
+    def test_run_marks_claude_routine_pending_until_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pegasus.cli.find_claude_routine", return_value=None):
+                main(["run", tmp, "--name", "demo-project"])
+            routine = Path(tmp) / "workflow" / "claude-routine.md"
+            text = routine.read_text()
+            self.assertIn("Status: pending_start", text)
+            self.assertNotIn("Status: registered", text)
+
+    def test_run_marks_claude_routine_registered_when_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = {"name": "demo-project", "cwd": tmp, "sessionId": "session-1", "pid": 123}
+            with patch("pegasus.cli.find_claude_routine", return_value=agent):
+                main(["run", tmp, "--name", "demo-project"])
+            routine = Path(tmp) / "workflow" / "claude-routine.md"
+            text = routine.read_text()
+            self.assertIn("Status: registered", text)
+            self.assertIn("Session: session-1", text)
+
+    def test_status_handles_corrupt_utf8_status_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "workflow").mkdir(parents=True)
+            (root / "workflow" / "status.md").write_bytes(b"# Status\n\nPhase: running\n\xff")
+            code = main(["status", tmp])
+            self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":
