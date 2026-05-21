@@ -1,6 +1,6 @@
 ---
 name: pegasus
-description: Pegasus project leader. Use when the user says $pegasus or /pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
+description: Pegasus project leader. Use when the user says $pegasus or /pegasus run|answer|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
 ---
 
 # Pegasus skill
@@ -27,6 +27,22 @@ When the user says `$pegasus run`, `/pegasus run`, or asks to start Pegasus thro
 
 ```bash
 pegasus run . --goal "<user goal>"
+pegasus status .
+```
+
+If status shows `Phase: needs_input`, ask the user exactly the open questions from `workflow/questions.md`.
+Do not implement or delegate while `needs_input` is active.
+Record the user's reply with:
+
+```bash
+pegasus answer . "<user answer>"
+pegasus status .
+```
+
+When the user says `$pegasus answer ...` or `/pegasus answer ...`:
+
+```bash
+pegasus answer . "<user answer>"
 pegasus status .
 ```
 

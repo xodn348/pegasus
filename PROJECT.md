@@ -7,19 +7,22 @@ The user starts a project with `/pegasus run`. Pegasus writes a clear spec in th
 ## Workflow
 
 1. User runs `/pegasus run`.
-2. Pegasus asks only the questions it needs.
-3. Pegasus writes the project spec into the GitHub repo.
-4. Pegasus splits the project into smaller task specs.
-5. Pegasus attempts to start or verifies one Claude routine named after the project.
-6. Claude routine agents work from those specs.
-7. The GitHub spec is the source of truth for every agent.
-8. Pegasus collects the results and verifies them.
-9. Pegasus asks the user only for big decisions or risky changes.
-10. Pegasus reports completion with evidence.
+2. Pegasus writes the project spec into the GitHub repo.
+3. If the goal is not actionable, Pegasus writes blocking questions to `workflow/questions.md` and sets status to `needs_input`.
+4. User answers with `/pegasus answer`.
+5. Pegasus records the answer in repo files and continues only after blockers are resolved.
+6. Pegasus splits the project into smaller task specs.
+7. Pegasus attempts to start or verifies one Claude routine named after the project.
+8. Claude routine agents work from those specs.
+9. The GitHub spec is the source of truth for every agent.
+10. Pegasus collects the results and verifies them.
+11. Pegasus asks the user only for big decisions or risky changes.
+12. Pegasus reports completion with evidence.
 
 ## Commands
 
 - `/pegasus run` — start or continue a project
+- `/pegasus answer` — answer blocking questions
 - `/pegasus tell` — add instructions
 - `/pegasus status` — check progress
 - `/pegasus stop` — stop the project

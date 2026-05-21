@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 TASK_RE = re.compile(r"[^a-z0-9]+")
+DEFAULT_GOAL = "Define this project from the user's request."
 CLAUDE_AGENT_TIMEOUT_SECONDS = 5
 CLAUDE_CREATE_TIMEOUT_SECONDS = 15
 
@@ -19,7 +20,7 @@ CLAUDE_CREATE_TIMEOUT_SECONDS = 15
 
 CODEX_SKILL = """---
 name: pegasus
-description: Pegasus project leader. Use when the user says $pegasus or /pegasus run|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
+description: Pegasus project leader. Use when the user says $pegasus or /pegasus run|answer|tell|status|stop. Runs the local pegasus CLI and treats repo spec files as source of truth.
 ---
 
 # Pegasus skill
@@ -49,6 +50,22 @@ pegasus run . --goal "<user goal>"
 pegasus status .
 ```
 
+If status shows `Phase: needs_input`, ask the user exactly the open questions from `workflow/questions.md`.
+Do not implement or delegate while `needs_input` is active.
+Record the user's reply with:
+
+```bash
+pegasus answer . "<user answer>"
+pegasus status .
+```
+
+When the user says `$pegasus answer ...` or `/pegasus answer ...`:
+
+```bash
+pegasus answer . "<user answer>"
+pegasus status .
+```
+
 When the user says `$pegasus tell ...` or `/pegasus tell ...`:
 
 ```bash
@@ -72,7 +89,7 @@ Ask only if the target repo or goal is missing. Prefer the current working direc
 
 CLAUDE_COMMAND = """---
 description: Run Pegasus project leadership in the current repo.
-argument-hint: "run|tell|status|stop [args]"
+argument-hint: "run|answer|tell|status|stop [args]"
 allowed-tools: Bash(pegasus:*), Bash(python3 -m pegasus:*)
 ---
 
@@ -86,11 +103,13 @@ Argument: `$ARGUMENTS`
 
 - Use the current working directory as the repo unless the user gives another path.
 - The repo spec is the source of truth: `spec/current.md`, `spec/tasks/*.md`, `spec/updates.md`, and `workflow/*.md`.
+- If `pegasus status` shows `Phase: needs_input`, ask exactly the questions from `workflow/questions.md` and record the reply with `pegasus answer`.
+- Do not implement or delegate while `needs_input` is active.
 - Do not claim Claude routine work is running unless Pegasus reports `registered`.
 
 ## Execute
 
-If `$ARGUMENTS` starts with `run`, `tell`, `status`, or `stop`, run:
+If `$ARGUMENTS` starts with `run`, `answer`, `tell`, `status`, or `stop`, run:
 
 ```bash
 pegasus $ARGUMENTS
@@ -261,6 +280,89 @@ Updated: {now()}
 
 {message}
 """
+
+
+def render_questions(questions: list[str], answered_history: str = "") -> str:
+    if questions:
+        body = "\n".join(f"{idx}. {question}" for idx, question in enumerate(questions, start=1))
+        text = f"# Questions\n\n## Open\n\n{body}\n"
+    else:
+        text = "# Questions\n\n## Open\n\nNone.\n"
+    if answered_history.strip():
+        text += f"\n## Answered history\n\n{answered_history.strip()}\n"
+    return text
+
+
+def parse_open_questions(text: str) -> list[str]:
+    questions: list[str] = []
+    in_open = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_open = line.lower() == "## open"
+            continue
+        if not in_open:
+            continue
+        if not line or line.lower() == "none.":
+            continue
+        match = re.match(r"^\d+[.)]\s*(.+)$", line)
+        questions.append(match.group(1).strip() if match else line.lstrip("-* ").strip())
+    return [question for question in questions if question]
+
+
+def answered_history(text: str) -> str:
+    marker = "## Answered history"
+    if marker not in text:
+        return ""
+    return text.split(marker, 1)[1].strip()
+
+
+def write_questions(p: ProjectPaths, questions: list[str], history: str = "") -> bool:
+    rendered = render_questions(questions, history)
+    if p.questions.exists() and read_text_lossy(p.questions) == rendered:
+        return False
+    p.questions.write_text(rendered, encoding="utf-8")
+    return True
+
+
+def is_actionable_goal(goal: str, task_titles: list[str]) -> tuple[bool, list[str]]:
+    normalized = " ".join(goal.strip().lower().split())
+    questions: list[str] = []
+    if task_titles:
+        return True, []
+    if not normalized or normalized == DEFAULT_GOAL.lower():
+        questions.append("What is the concrete project goal Pegasus should lead?")
+    elif len(normalized.split()) < 4:
+        questions.append("What outcome should be delivered, and how will we know it is done?")
+    vague_patterns = [
+        r"^improve (it|this|the project|the app)?$",
+        r"^make (it|this|the project|the app)? better$",
+        r"^fix (it|this)$",
+        r"^build (it|this)$",
+        r"^do (it|this)$",
+    ]
+    if any(re.match(pattern, normalized) for pattern in vague_patterns):
+        questions.append("What specific deliverable should Pegasus create or change?")
+    if any(word in normalized for word in ("cloud", "routine", "delegate", "delegation")) and not any(
+        word in normalized for word in ("repo", "spec", "source of truth", "github")
+    ):
+        questions.append("What repo/spec boundary should agents use as the source of truth for delegation?")
+    deduped = list(dict.fromkeys(questions))
+    return not deduped, deduped
+
+
+def append_update(p: ProjectPaths, label: str, message: str) -> None:
+    if not p.updates.exists():
+        p.updates.write_text("# Updates\n\nUser instructions after `/pegasus run` go here.\n", encoding="utf-8")
+    with p.updates.open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## {now()} — {label}\n\n{message}\n")
+
+
+def append_spec_answers(p: ProjectPaths, message: str) -> None:
+    if not p.spec.exists():
+        return
+    with p.spec.open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## User answer {now()}\n\n{message}\n")
 
 
 def routine_name(root: Path, requested: str = "") -> str:
@@ -578,11 +680,31 @@ def init_project(root: Path, goal: str, task_titles: list[str], project_name: st
 
     if write_if_missing(p.spec, render_spec(goal)):
         changed.append(str(p.spec.relative_to(root)))
+    elif goal != DEFAULT_GOAL:
+        spec_text = read_text_lossy(p.spec)
+        if DEFAULT_GOAL in spec_text:
+            p.spec.write_text(spec_text.replace(DEFAULT_GOAL, goal), encoding="utf-8")
+            changed.append(str(p.spec.relative_to(root)))
 
     if write_if_missing(p.updates, "# Updates\n\nUser instructions after `/pegasus run` go here.\n"):
         changed.append(str(p.updates.relative_to(root)))
 
-    if write_if_missing(p.questions, "# Questions\n\nNone.\n"):
+    question_history = answered_history(read_text_lossy(p.questions)) if p.questions.exists() else ""
+    actionable, questions = is_actionable_goal(goal, task_titles)
+    if not actionable:
+        if write_questions(p, questions, question_history):
+            changed.append(str(p.questions.relative_to(root)))
+        p.status.write_text(
+            render_status(
+                "needs_input",
+                "Pegasus needs answers before it can write implementation task specs or delegate work.",
+            ),
+            encoding="utf-8",
+        )
+        changed.append(str(p.status.relative_to(root)))
+        return changed
+
+    if write_questions(p, [], question_history):
         changed.append(str(p.questions.relative_to(root)))
 
     changed.extend(ensure_one_claude_routine(p, routine_name(root, project_name)))
@@ -600,8 +722,12 @@ def init_project(root: Path, goal: str, task_titles: list[str], project_name: st
 
     status_message = "Pegasus prepared task specs and Claude routine request files."
     if p.status.exists():
-        with p.status.open("a", encoding="utf-8") as fh:
-            fh.write(f"\n## {now()}\n\nPegasus run continued. Existing status was preserved.\n")
+        status_text = read_text_lossy(p.status)
+        if "Phase: needs_input" in status_text:
+            p.status.write_text(render_status("running", status_message), encoding="utf-8")
+        else:
+            with p.status.open("a", encoding="utf-8") as fh:
+                fh.write(f"\n## {now()}\n\nPegasus run continued. Existing status was preserved.\n")
     else:
         p.status.write_text(render_status("running", status_message), encoding="utf-8")
     changed.append(str(p.status.relative_to(root)))
@@ -643,7 +769,7 @@ def cmd_install_integrations(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
-    goal = args.goal or "Define this project from the user's request."
+    goal = args.goal or DEFAULT_GOAL
     changed = init_project(root, goal, args.task, args.name)
     print("Pegasus run prepared the repo spec.")
     print(f"Repo: {root}")
@@ -656,12 +782,40 @@ def cmd_run(args: argparse.Namespace) -> int:
 def cmd_tell(args: argparse.Namespace) -> int:
     root = Path(args.repo).expanduser().resolve()
     p = paths(root)
-    ensure_layout(p)
-    if not p.updates.exists():
-        p.updates.write_text("# Updates\n\n", encoding="utf-8")
-    with p.updates.open("a", encoding="utf-8") as fh:
-        fh.write(f"\n## {now()}\n\n{args.message}\n")
+    if not p.status.exists():
+        print("No Pegasus status found. Run `/pegasus run` first.")
+        return 1
+    append_update(p, "update", args.message)
     print(f"Added update to {p.updates}")
+    return 0
+
+
+def cmd_answer(args: argparse.Namespace) -> int:
+    root = Path(args.repo).expanduser().resolve()
+    p = paths(root)
+    if not p.status.exists():
+        print("No Pegasus status found. Run `/pegasus run` first.")
+        return 1
+    ensure_layout(p)
+    previous_questions = read_text_lossy(p.questions) if p.questions.exists() else ""
+    open_questions = parse_open_questions(previous_questions)
+    history_parts = []
+    existing_history = answered_history(previous_questions)
+    if existing_history:
+        history_parts.append(existing_history)
+    question_text = "\n".join(f"- {question}" for question in open_questions) or "- none"
+    history_parts.append(f"### {now()}\n\nQuestions:\n{question_text}\n\nAnswer:\n{args.message}")
+    append_update(p, "answer", args.message)
+    append_spec_answers(p, args.message)
+    if write_questions(p, [], "\n\n".join(history_parts)):
+        changed = [str(p.questions.relative_to(root))]
+    else:
+        changed = []
+    changed.extend(init_project(root, args.message, [args.message], args.name))
+    print(f"Recorded answer in {p.updates}")
+    print("Changed:")
+    for item in dict.fromkeys(changed):
+        print(f"- {item}")
     return 0
 
 
@@ -749,6 +903,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--task", action="append", default=[], help="task spec title; repeatable")
     run.add_argument("--name", default="", help="Claude routine name; defaults to project directory name")
     run.set_defaults(func=cmd_run)
+
+    answer = sub.add_parser("answer", help="record answers to open Pegasus questions")
+    answer.add_argument("repo", help="project repo path")
+    answer.add_argument("message", help="answer to append")
+    answer.add_argument("--name", default="", help="Claude routine name; defaults to project directory name")
+    answer.set_defaults(func=cmd_answer)
 
     tell = sub.add_parser("tell", help="append instructions")
     tell.add_argument("repo", help="project repo path")

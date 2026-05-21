@@ -23,11 +23,44 @@ class PegasusCliTests(unittest.TestCase):
 
     def test_tell_appends_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            main(["run", tmp])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo"])
             code = main(["tell", tmp, "Add mobile support"])
             self.assertEqual(code, 0)
             updates = (Path(tmp) / "spec" / "updates.md").read_text()
             self.assertIn("Add mobile support", updates)
+
+    def test_tell_before_run_fails_without_partial_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code = main(["tell", tmp, "Add mobile support"])
+            self.assertEqual(code, 1)
+            self.assertFalse((Path(tmp) / "spec" / "updates.md").exists())
+
+    def test_vague_run_needs_input_and_skips_delegation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code = main(["run", tmp, "--goal", "Improve it"])
+            self.assertEqual(code, 0)
+            root = Path(tmp)
+            self.assertIn("Phase: needs_input", (root / "workflow" / "status.md").read_text())
+            questions = (root / "workflow" / "questions.md").read_text()
+            self.assertIn("What specific deliverable", questions)
+            self.assertFalse((root / "workflow" / "claude-routine.md").exists())
+            self.assertEqual(list((root / "spec" / "tasks").glob("*.md")), [])
+
+    def test_answer_records_response_and_resumes_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["run", tmp, "--goal", "Improve it"])
+            code = main(["answer", tmp, "Build a CLI that writes project specs."])
+            self.assertEqual(code, 0)
+            root = Path(tmp)
+            self.assertIn("Build a CLI", (root / "spec" / "updates.md").read_text())
+            self.assertIn("## Answered history", (root / "workflow" / "questions.md").read_text())
+            self.assertIn("Phase: running", (root / "workflow" / "status.md").read_text())
+            self.assertTrue((root / "spec" / "tasks" / "001-build-a-cli-that-writes-project-specs.md").exists())
+
+    def test_answer_before_run_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code = main(["answer", tmp, "Build a CLI"])
+            self.assertEqual(code, 1)
 
     def test_status_reports_task_specs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -39,8 +72,6 @@ class PegasusCliTests(unittest.TestCase):
             self.assertIn("workflow/status.md", output)
             self.assertIn("spec/tasks/001-ship-feature.md", output)
             self.assertIn("workflow/agent-requests/001-ship-feature.md", output)
-
-
 
 
     def test_deep_digger_agent_is_documented(self) -> None:
@@ -69,8 +100,12 @@ class PegasusCliTests(unittest.TestCase):
             self.assertTrue(command.exists())
             self.assertIn("name: pegasus", skill.read_text())
             self.assertIn("$pegasus run", skill.read_text())
+            self.assertIn("pegasus answer", skill.read_text())
+            self.assertIn("needs_input", skill.read_text())
             self.assertIn("# /pegasus", command.read_text())
             self.assertIn("allowed-tools", command.read_text())
+            self.assertIn("pegasus answer", command.read_text())
+            self.assertIn("needs_input", command.read_text())
 
     def test_install_integrations_can_skip_one_surface(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -117,10 +152,10 @@ class PegasusCliTests(unittest.TestCase):
     def test_run_preserves_existing_status_on_continue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["run", tmp])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo"])
             status = root / "workflow" / "status.md"
             status.write_text("# Status\n\nPhase: verified\n\nEvidence: keep this\n")
-            code = main(["run", tmp])
+            code = main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo"])
             self.assertEqual(code, 0)
             text = status.read_text()
             self.assertIn("Evidence: keep this", text)
@@ -148,18 +183,18 @@ class PegasusCliTests(unittest.TestCase):
     def test_run_creates_one_claude_routine_named_after_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["run", tmp, "--name", "demo-project"])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             routine = root / "workflow" / "claude-routine.md"
             self.assertIn("Name: demo-project", routine.read_text())
-            main(["run", tmp, "--name", "demo-project"])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             self.assertIn("Name: demo-project", routine.read_text())
             with self.assertRaises(SystemExit):
-                main(["run", tmp, "--name", "other-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "other-project"])
 
     def test_stop_deletes_claude_routine_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["run", tmp, "--name", "demo-project"])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             self.assertTrue((root / "workflow" / "claude-routine.md").exists())
             main(["stop", tmp])
             self.assertFalse((root / "workflow" / "claude-routine.md").exists())
@@ -169,7 +204,7 @@ class PegasusCliTests(unittest.TestCase):
             root = Path(tmp)
             agent = {"name": "demo-project", "cwd": tmp, "sessionId": "session-1", "pid": 12345}
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, [agent])):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             with patch(
                 "pegasus.cli.list_claude_agents",
                 side_effect=[ClaudeListResult(True, [agent]), ClaudeListResult(True, [])],
@@ -183,7 +218,7 @@ class PegasusCliTests(unittest.TestCase):
             root = Path(tmp)
             agent = {"name": "demo-project", "cwd": tmp, "sessionId": "session-1", "pid": 12345}
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, [agent])):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             with patch(
                 "pegasus.cli.list_claude_agents",
                 side_effect=[ClaudeListResult(True, [agent]), ClaudeListResult(True, [agent])],
@@ -203,7 +238,7 @@ class PegasusCliTests(unittest.TestCase):
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, [])), patch(
                 "pegasus.cli.create_claude_routine", return_value=ClaudeCreateResult(True, False, "no safe create")
             ):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, agents)), patch(
                 "pegasus.cli.os.kill"
             ) as kill:
@@ -215,7 +250,7 @@ class PegasusCliTests(unittest.TestCase):
     def test_status_deletes_claude_routine_when_done(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["run", tmp, "--name", "demo-project"])
+            main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             (root / "workflow" / "status.md").write_text("# Status\n\nPhase: done\n")
             main(["status", tmp])
             self.assertFalse((root / "workflow" / "claude-routine.md").exists())
@@ -226,7 +261,7 @@ class PegasusCliTests(unittest.TestCase):
                 "pegasus.cli.create_claude_routine",
                 return_value=ClaudeCreateResult(True, False, "no safe create surface"),
             ):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             routine = Path(tmp) / "workflow" / "claude-routine.md"
             text = routine.read_text()
             self.assertIn("Status: pending_start", text)
@@ -237,7 +272,7 @@ class PegasusCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agent = {"name": "demo-project", "cwd": tmp, "sessionId": "session-1", "pid": 123}
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, [agent])):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             routine = Path(tmp) / "workflow" / "claude-routine.md"
             text = routine.read_text()
             self.assertIn("Status: registered", text)
@@ -268,7 +303,7 @@ class PegasusCliTests(unittest.TestCase):
                 "pegasus.cli.create_claude_routine",
                 return_value=ClaudeCreateResult(True, True, "launched"),
             ) as create:
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             create.assert_called_once()
             text = (Path(tmp) / "workflow" / "claude-routine.md").read_text()
             self.assertIn("Status: registered", text)
@@ -280,7 +315,7 @@ class PegasusCliTests(unittest.TestCase):
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, [agent])), patch(
                 "pegasus.cli.create_claude_routine"
             ) as create:
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             create.assert_not_called()
 
     def test_same_name_different_cwd_does_not_register(self) -> None:
@@ -290,7 +325,7 @@ class PegasusCliTests(unittest.TestCase):
                 "pegasus.cli.create_claude_routine",
                 return_value=ClaudeCreateResult(True, False, "no safe create surface"),
             ):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             text = (Path(tmp) / "workflow" / "claude-routine.md").read_text()
             self.assertIn("Status: pending_start", text)
 
@@ -301,7 +336,7 @@ class PegasusCliTests(unittest.TestCase):
                 {"name": "demo-project", "cwd": tmp, "sessionId": "session-2", "pid": 456},
             ]
             with patch("pegasus.cli.list_claude_agents", return_value=ClaudeListResult(True, agents)):
-                main(["run", tmp, "--name", "demo-project"])
+                main(["run", tmp, "--goal", "Build a demo", "--task", "Create demo", "--name", "demo-project"])
             text = (Path(tmp) / "workflow" / "claude-routine.md").read_text()
             self.assertIn("Status: conflict", text)
             self.assertIn("exact Claude routines", text)

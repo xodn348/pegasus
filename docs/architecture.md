@@ -6,10 +6,12 @@ Pegasus has one rule: the GitHub spec is the source of truth.
 
 1. `/pegasus run` starts or continues a project.
 2. Pegasus writes the main spec in the GitHub repo.
-3. Pegasus splits the work into small task specs.
-4. Claude routine agents work from those task specs.
-5. Pegasus reviews the results and updates status.
-6. Pegasus asks the user only when the spec does not authorize a decision.
+3. If the goal is not actionable, Pegasus writes blocking questions to `workflow/questions.md` and sets `workflow/status.md` to `needs_input`.
+4. `/pegasus answer` records the user's answer in repo files and resumes project preparation.
+5. Pegasus splits actionable work into small task specs.
+6. Claude routine agents work from those task specs.
+7. Pegasus reviews the results and updates status.
+8. Pegasus asks the user only when the spec does not authorize a decision.
 
 ## Repo files
 

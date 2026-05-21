@@ -44,6 +44,14 @@ pegasus run . --goal "Ship the next feature"
 pegasus status .
 ```
 
+If Pegasus needs a decision before it can delegate, status shows `Phase: needs_input`
+and lists questions from `workflow/questions.md`. Answer them from the repo:
+
+```sh
+pegasus answer . "Ship a CLI that writes project specs and delegates one task."
+pegasus status .
+```
+
 Add later instructions:
 
 ```sh
@@ -82,11 +90,13 @@ Claude Code:
 ## What Pegasus does
 
 1. Writes the project spec in the repo.
-2. Splits work into smaller task specs.
-3. Writes Claude routine request files for those task specs.
-4. Uses a deep-digger agent when LLM discussion needs one thread followed to ground.
-5. Attempts to start or verifies one Claude routine for the project.
-6. Reports progress from repo files.
+2. Writes blocking questions and `Phase: needs_input` when the goal is not actionable.
+3. Records answers back into repo files.
+4. Splits actionable work into smaller task specs.
+5. Writes Claude routine request files for those task specs.
+6. Uses a deep-digger agent when LLM discussion needs one thread followed to ground.
+7. Attempts to start or verifies one Claude routine for the project.
+8. Reports progress from repo files.
 
 ## Deep digger agent
 
@@ -95,6 +105,7 @@ Claude Code:
 ## Commands
 
 - `pegasus run <repo> --goal "..."` — start or continue
+- `pegasus answer <repo> "..."` — answer blocking questions
 - `pegasus tell <repo> "..."` — add instructions
 - `pegasus status <repo>` — check progress
 - `pegasus stop <repo>` — stop
@@ -122,7 +133,8 @@ If Claude cannot safely create or verify it, Pegasus keeps `pending_start` inste
 ## Developer dry-run
 
 ```sh
-python -m pegasus run ./my-project --goal "Build the thing"
+python -m pegasus run ./my-project --goal "Improve it"
+python -m pegasus answer ./my-project "Build a small CLI that writes project specs."
 python -m pegasus tell ./my-project "Add this requirement"
 python -m pegasus status ./my-project
 python -m pegasus stop ./my-project
